@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Moxie</title>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="brand"><span class="logo">&gt;_</span> Moxie</div>
+
+        <section>
+          <h3>Local shells</h3>
+          <ul id="shell-list" class="list"></ul>
+        </section>
+
+        <section class="grow">
+          <h3>SSH sessions <button id="add-ssh" class="icon-btn" title="New SSH session">+</button></h3>
+          <input id="session-filter" class="filter" placeholder="Filter sessions…" />
+          <ul id="ssh-list" class="list"></ul>
+        </section>
+
+        <section>
+          <h3>AI agents</h3>
+          <ul id="agent-list" class="list"></ul>
+        </section>
+
+        <div class="sidebar-footer">
+          <button id="open-settings" class="ghost-btn">⚙ Settings</button>
+        </div>
+      </aside>
+
+      <aside id="files-panel">
+        <div class="files-header">
+          <span class="files-title" id="files-title">SFTP</span>
+          <button class="icon-btn" id="files-close" title="Hide files">×</button>
+        </div>
+        <div class="files-toolbar">
+          <button class="icon-btn" data-files="up" title="Parent folder">↑</button>
+          <button class="icon-btn" data-files="home" title="Home">⌂</button>
+          <button class="icon-btn" data-files="refresh" title="Refresh">⟳</button>
+          <button class="icon-btn" data-files="mkdir" title="New folder">＋</button>
+          <button class="icon-btn" data-files="upload" title="Upload files">⤒</button>
+          <button class="icon-btn" data-files="upload-dir" title="Upload a folder">⇪</button>
+        </div>
+        <input id="files-path" class="filter" spellcheck="false" />
+        <div id="files-body">
+          <div class="files-msg">Open an SSH session to browse its files.</div>
+        </div>
+        <div id="transfers"></div>
+        <div id="files-drop" class="hidden">Drop to upload</div>
+      </aside>
+
+      <main id="main">
+        <div id="tabbar">
+          <div id="tabs"></div>
+          <button id="new-tab" class="icon-btn" title="New tab (Ctrl+Shift+T)">+</button>
+          <div class="spacer"></div>
+          <button id="files-btn" class="pill-btn" title="SFTP file browser (Ctrl+Shift+F)">📁 Files</button>
+          <button id="explain-btn" class="pill-btn" title="Ask AI about the recent output">✦ Explain output</button>
+          <button id="cmdbar-btn" class="pill-btn" title="Natural language → command (Ctrl+K)">✦ Command <kbd>Ctrl K</kbd></button>
+          <button id="toggle-ai" class="pill-btn" title="Toggle AI panel (Ctrl+Shift+A)">✦ AI panel</button>
+        </div>
+        <div id="terminals">
+          <div id="empty-state">
+            <div class="logo big">&gt;_</div>
+            <p>Open a shell, an SSH session, or an AI agent from the sidebar.</p>
+            <p class="hint">
+              <kbd>Ctrl K</kbd> describe a command ·
+              <kbd>→</kbd> accept suggestion ·
+              <kbd>Ctrl Space</kbd> ask AI to complete ·
+              <kbd>Ctrl Shift A</kbd> AI panel
+            </p>
+          </div>
+        </div>
+        <div id="statusbar">
+          <span id="status-left"></span>
+          <span class="spacer"></span>
+          <span id="status-ai"></span>
+        </div>
+      </main>
+
+      <aside id="ai-panel">
+        <div class="ai-header">
+          <span class="ai-title">✦ Assistant</span>
+          <select id="chat-provider" title="Provider">
+            <option value="anthropic">Claude API</option>
+            <option value="openai">OpenAI API</option>
+            <option value="claude-cli">Claude Code CLI</option>
+            <option value="codex-cli">Codex CLI</option>
+          </select>
+          <button id="chat-clear" class="icon-btn" title="New conversation">⟲</button>
+        </div>
+        <div id="chat-log">
+          <div class="chat-empty">
+            Ask anything about your terminal. Recent output from the active tab is attached automatically.
+            Code blocks get <b>Insert</b> and <b>Run</b> buttons.
+          </div>
+        </div>
+        <form id="chat-form">
+          <div class="chat-opts">
+            <label class="ctx"><input type="checkbox" id="ctx-toggle" checked /> Attach terminal output</label>
+            <span class="spacer"></span>
+            <label class="ctx" title="Agent mode: the AI runs commands in the active terminal, reads the output and keeps going until the task is done">
+              Agent
+              <select id="agent-mode">
+                <option value="off">Off</option>
+                <option value="ask">Ask before running</option>
+                <option value="auto">Auto-run</option>
+              </select>
+            </label>
+          </div>
+          <textarea id="chat-input" rows="3" placeholder="e.g. why did that command fail?  (Enter to send, Shift+Enter for newline)"></textarea>
+          <div class="chat-actions">
+            <button type="button" id="chat-stop" class="ghost-btn hidden">Stop</button>
+            <button type="submit" id="chat-send" class="primary-btn">Send</button>
+          </div>
+        </form>
+      </aside>
+    </div>
+
+    <!-- Natural language → command bar -->
+    <div id="cmdbar" class="overlay hidden">
+      <div class="cmdbar-box">
+        <div class="cmdbar-row">
+          <span class="spark">✦</span>
+          <input id="cmdbar-input" placeholder="Describe what you want to do… e.g. find the 10 largest files here" />
+        </div>
+        <div id="cmdbar-result" class="hidden">
+          <pre id="cmdbar-cmd"></pre>
+          <div class="cmdbar-hint"><kbd>Enter</kbd> insert · <kbd>Ctrl Enter</kbd> run · <kbd>Esc</kbd> close</div>
+        </div>
+        <div id="cmdbar-status" class="cmdbar-hint"></div>
+      </div>
+    </div>
+
+    <dialog id="ssh-dialog">
+      <form method="dialog" id="ssh-form">
+        <h2>SSH session</h2>
+        <input type="hidden" name="id" />
+        <label>Name <input name="name" placeholder="prod-web-1" /></label>
+        <div class="row">
+          <label class="grow">Host <input name="host" required placeholder="10.0.0.5 or example.com" /></label>
+          <label class="port">Port <input name="port" type="number" value="22" /></label>
+        </div>
+        <label>Username <input name="user" placeholder="root" /></label>
+        <div class="row">
+          <label class="grow">Password <input name="password" type="password" autocomplete="off" placeholder="optional" /></label>
+          <label class="check remember"><input type="checkbox" name="remember" checked /> Remember</label>
+        </div>
+        <label>Private key (optional) <input name="key" placeholder="C:\Users\you\.ssh\id_ed25519 — defaults to ~/.ssh/id_*" /></label>
+        <label>Extra ssh args (optional) <input name="extra" placeholder="-J bastion -o ServerAliveInterval=30" /></label>
+        <p class="hint">
+          The terminal uses your system OpenSSH client (so ~/.ssh/config, agents and known_hosts work) and
+          types the saved password at the login prompt. Remembered passwords are kept in the OS credential
+          store (Windows Credential Manager), never in Moxie's config files.
+        </p>
+        <div class="dialog-actions">
+          <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>
+          <button value="save" class="ghost-btn">Save</button>
+          <button value="connect" class="primary-btn">Save &amp; connect</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="password-dialog">
+      <form method="dialog" id="password-form">
+        <h2 id="password-title">Password required</h2>
+        <p class="hint" id="password-hint"></p>
+        <label>Password <input name="password" type="password" autocomplete="off" /></label>
+        <label class="check"><input type="checkbox" name="remember" checked /> Remember (OS credential store)</label>
+        <div class="dialog-actions">
+          <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>
+          <button value="ok" class="primary-btn">Connect</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="ctx-menu" class="ctx-menu hidden"></div>
+
+    <dialog id="settings-dialog">
+      <form method="dialog" id="settings-form">
+        <h2>Settings</h2>
+        <fieldset>
+          <legend>AI</legend>
+          <div class="row">
+            <label class="grow">Chat / command provider
+              <select name="chat_provider">
+                <option value="anthropic">Claude API</option>
+                <option value="openai">OpenAI API</option>
+                <option value="claude-cli">Claude Code CLI</option>
+                <option value="codex-cli">Codex CLI</option>
+              </select>
+            </label>
+            <label class="grow">Autocomplete provider
+              <select name="complete_provider">
+                <option value="anthropic">Claude API (fast model)</option>
+                <option value="openai">OpenAI API (fast model)</option>
+                <option value="claude-cli">Claude Code CLI (slow)</option>
+                <option value="codex-cli">Codex CLI (slow)</option>
+              </select>
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" name="autocomplete_ai" /> AI autocomplete while typing (history suggestions are always on)</label>
+        </fieldset>
+        <fieldset>
+          <legend>Claude API</legend>
+          <label>API key <input name="anthropic_api_key" type="password" placeholder="sk-ant-…  (or set ANTHROPIC_API_KEY)" /></label>
+          <div class="row">
+            <label class="grow">Chat model <input name="anthropic_model" /></label>
+            <label class="grow">Fast model <input name="anthropic_fast_model" /></label>
+            <label>Effort
+              <select name="anthropic_effort">
+                <option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option>
+              </select>
+            </label>
+          </div>
+          <label>Base URL <input name="anthropic_base_url" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>OpenAI / compatible API</legend>
+          <label>API key <input name="openai_api_key" type="password" placeholder="sk-…  (or set OPENAI_API_KEY; blank for local servers)" /></label>
+          <div class="row">
+            <label class="grow">Chat model <input name="openai_model" /></label>
+            <label class="grow">Fast model <input name="openai_fast_model" /></label>
+          </div>
+          <label>Base URL <input name="openai_base_url" placeholder="https://api.openai.com/v1 · http://localhost:11434/v1 for Ollama" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>CLI agents</legend>
+          <div class="row">
+            <label class="grow">claude path <input name="claude_cli_path" placeholder="auto (PATH)" /></label>
+            <label class="grow">codex path <input name="codex_cli_path" placeholder="auto (PATH)" /></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Terminal</legend>
+          <label class="port">Font size <input name="font_size" type="number" min="9" max="28" /></label>
+        </fieldset>
+        <p class="hint">Prototype note: keys are saved in plain JSON in your config folder.</p>
+        <div class="dialog-actions">
+          <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>
+          <button value="save" class="primary-btn">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

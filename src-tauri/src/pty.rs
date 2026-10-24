@@ -1,0 +1,242 @@
+//! Local shells, SSH and CLI agents all run as a child process inside a pseudo-terminal.
+//! Output is streamed to the frontend as `pty-output` events; exit as `pty-exit`.
+
+use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+use serde::Serialize;
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter, State};
+
+struct Session {
+    master: Box<dyn MasterPty + Send>,
+    writer: Box<dyn Write + Send>,
+    killer: Box<dyn ChildKiller + Send + Sync>,
+}
+
+#[derive(Default)]
+pub struct PtyState {
+    sessions: Arc<Mutex<HashMap<u32, Session>>>,
+    next_id: AtomicU32,
+}
+
+#[derive(Clone, Serialize)]
+struct OutputEvent {
+    id: u32,
+    data: String,
+}
+
+#[derive(Clone, Serialize)]
+struct ExitEvent {
+    id: u32,
+    code: Option<u32>,
+}
+
+#[derive(Serialize)]
+pub struct ShellInfo {
+    name: String,
+    program: String,
+    args: Vec<String>,
+}
+
+/// Resolves a program through PATH. Windows `.cmd`/`.bat` shims (npm global installs)
+/// can't be executed directly, so they are wrapped in `cmd.exe /c`.
+pub fn resolve_program(program: &str) -> (String, Vec<String>) {
+    let path = which::which(program)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| program.to_string());
+    let lower = path.to_lowercase();
+    if cfg!(windows) && (lower.ends_with(".cmd") || lower.ends_with(".bat")) {
+        ("cmd.exe".into(), vec!["/c".into(), path])
+    } else {
+        (path, vec![])
+    }
+}
+
+#[tauri::command]
+pub fn pty_spawn(
+    app: AppHandle,
+    state: State<'_, PtyState>,
+    program: String,
+    args: Vec<String>,
+    cwd: Option<String>,
+    cols: u16,
+    rows: u16,
+    secret_key: Option<String>,
+) -> Result<u32, String> {
+    let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
+    let pair = native_pty_system().openpty(size).map_err(|e| e.to_string())?;
+
+    let (prog, mut full_args) = resolve_program(&program);
+    full_args.extend(args);
+    let mut cmd = CommandBuilder::new(&prog);
+    cmd.args(&full_args);
+    if let Some(dir) = cwd.filter(|d| !d.is_empty()).map(PathBuf::from).or_else(dirs::home_dir) {
+        cmd.cwd(dir);
+    }
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+
+    let mut child = pair
+        .slave
+        .spawn_command(cmd)
+        .map_err(|e| format!("failed to start {program}: {e}"))?;
+    drop(pair.slave);
+
+    let killer = child.clone_killer();
+    let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+    let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+
+    let id = state.next_id.fetch_add(1, Ordering::SeqCst) + 1;
+    state
+        .sessions
+        .lock()
+        .unwrap()
+        .insert(id, Session { master: pair.master, writer, killer });
+
+    let out_app = app.clone();
+    let autofill_sessions = state.sessions.clone();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 16 * 1024];
+        // Bytes of a multi-byte UTF-8 char split across reads wait here for the next read.
+        let mut pending: Vec<u8> = Vec::new();
+        // MobaXterm-style auto-login: answer the first "password:" prompt with the saved
+        // password. Only once, so a wrong password falls back to manual entry.
+        let mut autofill = secret_key.as_deref().and_then(crate::secrets::get);
+        let started = std::time::Instant::now();
+        let mut tail = String::new();
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    pending.extend_from_slice(&buf[..n]);
+                    let valid = match std::str::from_utf8(&pending) {
+                        Ok(_) => pending.len(),
+                        Err(e) if e.error_len().is_none() => e.valid_up_to(),
+                        Err(_) => pending.len(),
+                    };
+                    let chunk: Vec<u8> = pending.drain(..valid).collect();
+                    if chunk.is_empty() {
+                        continue;
+                    }
+                    let data = String::from_utf8_lossy(&chunk).into_owned();
+                    if autofill.is_some() {
+                        tail.push_str(&data);
+                        if tail.len() > 400 {
+                            tail = tail.chars().rev().take(200).collect::<Vec<_>>().into_iter().rev().collect();
+                        }
+                        let t = tail.trim_end().to_lowercase();
+                        if t.ends_with("password:") {
+                            let pw = autofill.take().unwrap();
+                            if let Some(s) = autofill_sessions.lock().unwrap().get_mut(&id) {
+                                let _ = s.writer.write_all(format!("{pw}\r").as_bytes());
+                                let _ = s.writer.flush();
+                            }
+                        } else if started.elapsed().as_secs() > 60 {
+                            autofill = None;
+                        }
+                    }
+                    let _ = out_app.emit("pty-output", OutputEvent { id, data });
+                }
+            }
+        }
+    });
+
+    // On Windows the ConPTY reader doesn't reliably hit EOF when the child exits,
+    // so exit is detected by waiting on the child instead.
+    let sessions = state.sessions.clone();
+    std::thread::spawn(move || {
+        let code = child.wait().ok().map(|s| s.exit_code());
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        sessions.lock().unwrap().remove(&id);
+        let _ = app.emit("pty-exit", ExitEvent { id, code });
+    });
+
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn pty_write(state: State<'_, PtyState>, id: u32, data: String) -> Result<(), String> {
+    let mut sessions = state.sessions.lock().unwrap();
+    let s = sessions.get_mut(&id).ok_or("session not found")?;
+    s.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+    s.writer.flush().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pty_resize(state: State<'_, PtyState>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
+    let sessions = state.sessions.lock().unwrap();
+    let s = sessions.get(&id).ok_or("session not found")?;
+    s.master
+        .resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pty_kill(state: State<'_, PtyState>, id: u32) -> Result<(), String> {
+    if let Some(mut s) = state.sessions.lock().unwrap().remove(&id) {
+        let _ = s.killer.kill();
+    }
+    Ok(())
+}
+
+/// Called when the UI (re)loads: any PTYs from a previous page load have no tab anymore.
+#[tauri::command]
+pub fn pty_kill_all(state: State<'_, PtyState>) {
+    for (_, mut s) in state.sessions.lock().unwrap().drain() {
+        let _ = s.killer.kill();
+    }
+}
+
+#[tauri::command]
+pub fn find_program(name: String) -> Option<String> {
+    which::which(name).ok().map(|p| p.to_string_lossy().to_string())
+}
+
+fn shell(name: &str, program: &str, args: &[&str]) -> ShellInfo {
+    ShellInfo {
+        name: name.into(),
+        program: program.into(),
+        args: args.iter().map(|a| a.to_string()).collect(),
+    }
+}
+
+#[tauri::command]
+pub fn list_shells() -> Vec<ShellInfo> {
+    let mut shells = Vec::new();
+    if cfg!(windows) {
+        // PSReadLine's own inline prediction would collide with Moxie's ghost-text suggestions.
+        let ps_args = [
+            "-NoLogo",
+            "-NoExit",
+            "-Command",
+            "try { Set-PSReadLineOption -PredictionSource None -ErrorAction Stop } catch {}",
+        ];
+        if which::which("pwsh").is_ok() {
+            shells.push(shell("PowerShell 7", "pwsh", &ps_args));
+        }
+        shells.push(shell("Windows PowerShell", "powershell.exe", &ps_args));
+        shells.push(shell("Command Prompt", "cmd.exe", &[]));
+        let git_bash = r"C:\Program Files\Git\bin\bash.exe";
+        if std::path::Path::new(git_bash).exists() {
+            shells.push(shell("Git Bash", git_bash, &["--login", "-i"]));
+        }
+        if which::which("wsl").is_ok() {
+            shells.push(shell("WSL", "wsl.exe", &[]));
+        }
+    } else {
+        let default = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
+        shells.push(shell("Default shell", &default, &["-l"]));
+        for s in ["zsh", "bash", "fish"] {
+            if let Ok(p) = which::which(s) {
+                let p = p.to_string_lossy().to_string();
+                if p != default {
+                    shells.push(shell(s, &p, &["-l"]));
+                }
+            }
+        }
+    }
+    shells
+}

@@ -1,0 +1,24 @@
+[package]
+name = "moxie"
+version = "0.1.0"
+description = "AI-native terminal & SSH client (MobaXterm alternative) — prototype"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+portable-pty = "0.9"
+tokio = { version = "1", features = ["process", "io-util", "sync", "time", "rt", "fs", "net"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures-util = "0.3"
+dirs = "6"
+which = "7"
+anyhow = "1"
+russh = { version = "0.64.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh-sftp = "3.0.1"
+tauri-plugin-dialog = "2"
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
