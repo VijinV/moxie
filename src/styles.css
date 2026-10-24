@@ -191,9 +191,10 @@ dialog label.remember { align-self: flex-end; padding-bottom: 8px; }
 #cmdbar-result .cmdbar-hint { padding: 0; }
 
 /* ---------------------------------------------------------------- dialogs */
-dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 0; width: min(620px, 92vw); max-height: 88vh; }
+/* Only the form scrolls; the dialog itself never does (avoids a second scrollbar). */
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 0; width: min(620px, 92vw); max-height: 88vh; overflow: hidden; }
 dialog::backdrop { background: rgba(5, 6, 10, .6); }
-dialog form { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 88vh; }
+dialog form { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: calc(88vh - 2px); scrollbar-width: thin; scrollbar-color: #2a3042 transparent; }
 dialog h2 { margin: 0 0 4px; font-size: 16px; }
 dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 dialog label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
