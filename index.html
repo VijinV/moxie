@@ -408,7 +408,7 @@
     <dialog id="changelog-dialog">
       <div class="changelog-header">
         <span class="changelog-title">✦ What's New in Moxie</span>
-        <span class="changelog-ver">v0.2.0</span>
+        <span class="changelog-ver">v0.3.0</span>
         <button class="icon-btn" id="changelog-close" title="Close">×</button>
       </div>
       <div id="changelog-update-banner" class="changelog-banner hidden">
@@ -418,26 +418,86 @@
       <div class="changelog-body">
 
         <div class="changelog-section">
-          <div class="changelog-section-tag">v0.2.0 — Current</div>
+          <div class="changelog-section-tag">v0.3.0 — Current</div>
+          <div class="changelog-item">
+            <span class="changelog-icon">✦</span>
+            <div>
+              <div class="changelog-item-title">AI agent with tools</div>
+              <div class="changelog-item-desc">With the Claude or OpenAI API the assistant runs commands, reads files and lists folders itself (on the server for SSH tabs) until the task is done. Destructive commands always ask first.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">💬</span>
+            <div>
+              <div class="changelog-item-title">One chat per SSH session</div>
+              <div class="changelog-item-desc">Each SSH session keeps its own chat. Plus full-text chat search, 📝 session summaries and 🔎 natural-language log search.</div>
+            </div>
+          </div>
           <div class="changelog-item">
             <span class="changelog-icon">▣</span>
             <div>
-              <div class="changelog-item-title">Activity Monitor</div>
-              <div class="changelog-item-desc">Live CPU, memory, network, and process stats in a resizable bottom panel. Automatically shows remote server stats when an SSH session is active.</div>
+              <div class="changelog-item-title">Activity monitor</div>
+              <div class="changelog-item-desc">Live CPU, memory, network and process stats in a resizable bottom panel, for this PC or the server on SSH tabs. The SFTP panel also has a <b>Server</b> dashboard.</div>
             </div>
           </div>
           <div class="changelog-item">
-            <span class="changelog-icon">⟺</span>
+            <span class="changelog-icon">⊞</span>
             <div>
-              <div class="changelog-item-title">Drag-to-resize all panels</div>
-              <div class="changelog-item-desc">Sidebar, SFTP browser, AI assistant, and the new monitor panel are all freely resizable — just drag the edge. Sizes are remembered between sessions.</div>
+              <div class="changelog-item-title">Terminal upgrades</div>
+              <div class="changelog-item-desc">Split right/down icons, find (<code>Ctrl+F</code>), foldable command output, Ctrl+click links and paths, broadcast typing, themes and fonts, workspace restore.</div>
             </div>
           </div>
           <div class="changelog-item">
-            <span class="changelog-icon">⇄</span>
+            <span class="changelog-icon">⇩</span>
             <div>
-              <div class="changelog-item-title">Remote SSH monitoring</div>
-              <div class="changelog-item-desc">When you switch to an SSH tab the monitor connects over the same SSH session and reads <code>/proc/stat</code>, <code>free</code>, and <code>ps</code> — no agent needed on the server.</div>
+              <div class="changelog-item-title">Sessions</div>
+              <div class="changelog-item-desc">Folders, import from ssh config / MobaXterm / PuTTY, jump hosts in SFTP, RDP and VNC sessions.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">❏</span>
+            <div>
+              <div class="changelog-item-title">Snippets &amp; workflows</div>
+              <div class="changelog-item-desc">Saved commands with <code>{{placeholders}}</code>; workflows stop at the first failure. Press <code>Ctrl+/</code> for all shortcuts.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">🔑</span>
+            <div>
+              <div class="changelog-item-title">Keys in the keychain</div>
+              <div class="changelog-item-desc">AI API keys are kept in Windows Credential Manager instead of the settings file.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="changelog-section">
+          <div class="changelog-section-tag">v0.2.0</div>
+          <div class="changelog-item">
+            <span class="changelog-icon">⬆</span>
+            <div>
+              <div class="changelog-item-title">Auto-update</div>
+              <div class="changelog-item-desc">Signed updates delivered over GitHub Releases. Moxie checks in the background and shows a pill when a new version is ready.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">🕘</span>
+            <div>
+              <div class="changelog-item-title">Chat history</div>
+              <div class="changelog-item-desc">Chats are saved automatically and can be continued later.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">✎</span>
+            <div>
+              <div class="changelog-item-title">Edit &amp; auto-upload</div>
+              <div class="changelog-item-desc">Open a remote file in your editor; every save uploads it back.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">⚠</span>
+            <div>
+              <div class="changelog-item-title">Error detection</div>
+              <div class="changelog-item-desc">Failed commands get an <b>Explain &amp; fix</b> chip; server-aware AI and autocomplete.</div>
             </div>
           </div>
         </div>
@@ -463,13 +523,6 @@
             <div>
               <div class="changelog-item-title">AI assistant</div>
               <div class="changelog-item-desc">Inline autocomplete, command bar (Ctrl+K), side panel chat, and one-click "Explain output" — powered by Claude, OpenAI, Claude Code CLI or Codex CLI.</div>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <span class="changelog-icon">⬆</span>
-            <div>
-              <div class="changelog-item-title">Auto-update</div>
-              <div class="changelog-item-desc">Signed updates delivered over GitHub Releases. Moxie checks in the background and shows a banner when a new version is ready.</div>
             </div>
           </div>
         </div>
