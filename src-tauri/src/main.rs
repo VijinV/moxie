@@ -1,10 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ai;
+mod bastion;
 mod config;
 mod pty;
 mod secrets;
 mod sftp;
+
+use tauri::Manager;
 
 fn main() {
     tauri::Builder::default()
@@ -12,6 +15,7 @@ fn main() {
         .manage(pty::PtyState::default())
         .manage(ai::AiState::default())
         .manage(sftp::SftpState::default())
+        .manage(bastion::BastionState::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -43,7 +47,16 @@ fn main() {
             sftp::sftp_upload,
             sftp::sftp_open,
             sftp::reveal_local,
+            bastion::bastion_tunnel_start,
+            bastion::bastion_tunnel_stop,
+            bastion::bastion_stop_all,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Moxie");
+        .build(tauri::generate_context!())
+        .expect("error while building Moxie")
+        .run(|app, event| {
+            // Bastion tunnels are separate az processes; don't leave them running after exit.
+            if let tauri::RunEvent::Exit = event {
+                bastion::stop_all(&app.state::<bastion::BastionState>());
+            }
+        });
 }

@@ -26,6 +26,7 @@ pub struct Settings {
 
     pub claude_cli_path: String,
     pub codex_cli_path: String,
+    pub az_cli_path: String,
 }
 
 impl Default for Settings {
@@ -46,6 +47,7 @@ impl Default for Settings {
             openai_fast_model: "gpt-5-mini".into(),
             claude_cli_path: String::new(),
             codex_cli_path: String::new(),
+            az_cli_path: String::new(),
         }
     }
 }

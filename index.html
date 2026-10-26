@@ -139,18 +139,40 @@
       <form method="dialog" id="ssh-form">
         <h2>SSH session</h2>
         <input type="hidden" name="id" />
-        <label>Name <input name="name" placeholder="prod-web-1" /></label>
         <div class="row">
-          <label class="grow">Host <input name="host" required placeholder="10.0.0.5 or example.com" /></label>
+          <label class="grow">Name <input name="name" placeholder="prod-web-1" /></label>
+          <label>Connection
+            <select name="type">
+              <option value="ssh">SSH</option>
+              <option value="bastion">Azure Bastion</option>
+            </select>
+          </label>
+        </div>
+        <div class="row" data-for="ssh">
+          <label class="grow">Host <input name="host" placeholder="10.0.0.5 or example.com" /></label>
           <label class="port">Port <input name="port" type="number" value="22" /></label>
         </div>
+        <fieldset data-for="bastion">
+          <legend>Azure Bastion</legend>
+          <div class="row">
+            <label class="grow">Bastion name <input name="bastion" placeholder="my-bastion" /></label>
+            <label class="grow">Resource group <input name="rg" placeholder="my-rg" /></label>
+          </div>
+          <label>VM resource ID <input name="vm" placeholder="/subscriptions/…/resourceGroups/…/providers/Microsoft.Compute/virtualMachines/my-vm" /></label>
+          <label>Subscription (optional) <input name="sub" placeholder="subscription ID — defaults to the az CLI's current one" /></label>
+          <p class="hint">
+            Uses <code>az network bastion tunnel</code>: needs the Azure CLI (<code>az login</code>, <code>az extension add -n bastion</code>)
+            and a Bastion Standard or Premium SKU with <b>Native client support</b> enabled. Find the VM resource ID under the VM's
+            Properties in the Azure portal.
+          </p>
+        </fieldset>
         <label>Username <input name="user" placeholder="root" /></label>
         <div class="row">
           <label class="grow">Password <input name="password" type="password" autocomplete="off" placeholder="optional" /></label>
           <label class="check remember"><input type="checkbox" name="remember" checked /> Remember</label>
         </div>
         <label>Private key (optional) <input name="key" placeholder="C:\Users\you\.ssh\id_ed25519 — defaults to ~/.ssh/id_*" /></label>
-        <label>Extra ssh args (optional) <input name="extra" placeholder="-J bastion -o ServerAliveInterval=30" /></label>
+        <label>Extra ssh args (optional) <input name="extra" placeholder="-o ServerAliveInterval=30" /></label>
         <p class="hint">
           The terminal uses your system OpenSSH client (so ~/.ssh/config, agents and known_hosts work) and
           types the saved password at the login prompt. Remembered passwords are kept in the OS credential
@@ -232,6 +254,7 @@
           <div class="row">
             <label class="grow">claude path <input name="claude_cli_path" placeholder="auto (PATH)" /></label>
             <label class="grow">codex path <input name="codex_cli_path" placeholder="auto (PATH)" /></label>
+            <label class="grow">az path (Bastion) <input name="az_cli_path" placeholder="auto (PATH)" /></label>
           </div>
         </fieldset>
         <fieldset>

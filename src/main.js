@@ -81,14 +81,17 @@ function renderSessions() {
   const ul = $("ssh-list");
   const q = $("session-filter").value.toLowerCase();
   ul.innerHTML = "";
-  const list = sessions.filter((s) => `${s.name} ${s.host} ${s.user}`.toLowerCase().includes(q));
+  const list = sessions.filter((s) => `${s.name} ${s.host} ${s.user} ${s.vm ?? ""}`.toLowerCase().includes(q));
   if (!list.length) {
     ul.innerHTML = `<li class="muted small">${sessions.length ? "No matches" : "No saved sessions yet"}</li>`;
     return;
   }
   for (const s of list) {
-    const li = item(s.name || s.host, "⇄", () => connectSsh(s));
-    li.title = `${s.user ? s.user + "@" : ""}${s.host}:${s.port || 22}`;
+    const bastion = s.type === "bastion";
+    const li = item(sessionTitle(s), bastion ? "☁" : "⇄", () => connectSession(s));
+    li.title = bastion
+      ? `${s.user ? s.user + "@" : ""}${vmName(s.vm)} via Azure Bastion ${s.bastion}`
+      : `${s.user ? s.user + "@" : ""}${s.host}:${s.port || 22}`;
     const actions = document.createElement("span");
     actions.className = "item-actions";
     actions.innerHTML = `<button title="Edit">✎</button><button title="Delete">×</button>`;
@@ -139,6 +142,11 @@ function item(label, icon, onClick) {
   return li;
 }
 
+function connectSession(s) {
+  if (s.type === "bastion") connectBastion(s);
+  else connectSsh(s);
+}
+
 function connectSsh(s) {
   const problem = hostProblem(s.host);
   if (problem) {
@@ -146,31 +154,67 @@ function connectSsh(s) {
     if (sessions.some((x) => x.id === s.id)) openSshDialog(s); // let them fix the saved host
     return;
   }
+  openSshTab(s, { host: s.host, port: s.port });
+}
+
+/** Opens `az network bastion tunnel` to the VM, then SSH/SFTP over 127.0.0.1:<port>. */
+async function connectBastion(s) {
+  const tunnelKey = `bastion:${s.id}`;
+  setStatus(`Opening Azure Bastion tunnel to ${vmName(s.vm)}…`);
+  let port;
+  try {
+    port = await invoke("bastion_tunnel_start", {
+      key: tunnelKey,
+      name: s.bastion,
+      resourceGroup: s.rg,
+      targetId: s.vm,
+      subscription: s.sub || null,
+    });
+  } catch (err) {
+    const msg = String(err);
+    setStatus("Azure Bastion tunnel failed");
+    alert(
+      msg === "AZ_NOT_FOUND"
+        ? "Azure Bastion needs the Azure CLI, which wasn't found.\n\n1. Install it: https://aka.ms/installazurecliwindows\n2. Run: az login\n3. Run: az extension add -n bastion\n\nOr set its path in Settings → CLI agents → az path."
+        : msg,
+    );
+    return;
+  }
+  setStatus(`Bastion tunnel ready on 127.0.0.1:${port}`);
+  // The local port changes every time, so key the host's identity on the VM, not on 127.0.0.1:<port>.
+  openSshTab(s, { host: "127.0.0.1", port, hostKeyAlias: `${vmName(s.vm)}.bastion`, tunnelKey });
+}
+
+function openSshTab(s, { host, port, hostKeyAlias = null, tunnelKey = null }) {
   const args = [];
-  if (s.port && String(s.port) !== "22") args.push("-p", String(s.port));
+  if (port && String(port) !== "22") args.push("-p", String(port));
+  if (hostKeyAlias) args.push("-o", `HostKeyAlias=${hostKeyAlias}`);
   if (s.key) args.push("-i", s.key);
   if (s.extra) args.push(...s.extra.split(/\s+/).filter(Boolean));
-  args.push(s.user ? `${s.user}@${s.host}` : s.host);
+  args.push(s.user ? `${s.user}@${host}` : host);
   const secretKey = secretKeyFor(s);
   openTab({
-    title: s.name || s.host,
+    title: sessionTitle(s),
     program: "ssh",
     args,
     kind: "ssh",
     secretKey,
-    ssh: { host: s.host, port: s.port, user: s.user, key: s.key, secretKey },
+    tunnelKey,
+    ssh: { host, port, user: s.user, key: s.key, secretKey, hostKeyAlias, label: hostKeyAlias ?? host },
   });
   toggleFiles(true); // MobaXterm opens the SFTP browser alongside every SSH session
 }
 
 const secretKeyFor = (s) => `ssh:${s.id}`;
+const vmName = (id = "") => id.replace(/\/+$/, "").split("/").pop() || "vm";
+const sessionTitle = (s) => s.name || (s.type === "bastion" ? vmName(s.vm) : s.host);
 
 /** Asks for an SSH password (used when SFTP login needs one). Resolves true if one was given. */
 function promptPassword(ssh, reason) {
   const dlg = $("password-dialog");
   const form = $("password-form");
   form.reset();
-  $("password-title").textContent = `Password for ${ssh.user ? ssh.user + "@" : ""}${ssh.host}`;
+  $("password-title").textContent = `Password for ${ssh.user ? ssh.user + "@" : ""}${ssh.label ?? ssh.host}`;
   $("password-hint").textContent = reason;
   dlg.showModal();
   return new Promise((resolve) => {
@@ -207,16 +251,34 @@ function hostProblem(value) {
   return "";
 }
 
-$("ssh-form").elements.host.addEventListener("input", (e) => e.target.setCustomValidity(hostProblem(e.target.value)));
+const VM_ID = /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/[^/]+\/[^/]+\/[^/]+$/i;
+
+/** Shows the fields for the chosen connection type and sets their validity messages. */
+function validateSshForm() {
+  const f = $("ssh-form").elements;
+  const bastion = f.type.value === "bastion";
+  for (const el of document.querySelectorAll("#ssh-form [data-for]")) el.hidden = el.dataset.for !== f.type.value;
+  f.host.required = !bastion;
+  f.host.setCustomValidity(bastion ? "" : hostProblem(f.host.value));
+  for (const k of ["bastion", "rg", "vm"]) f[k].required = bastion;
+  const vm = f.vm.value.trim();
+  f.vm.setCustomValidity(
+    bastion && vm && !VM_ID.test(vm)
+      ? "Paste the VM's full resource ID: /subscriptions/<id>/resourceGroups/<rg>/providers/Microsoft.Compute/virtualMachines/<vm>"
+      : "",
+  );
+}
+$("ssh-form").addEventListener("input", validateSshForm);
 
 function openSshDialog(session = null) {
   const dlg = $("ssh-dialog");
   const form = $("ssh-form");
   form.reset();
   const s = session ?? { port: 22 };
-  for (const k of ["id", "name", "host", "port", "user", "key", "extra"]) form.elements[k].value = s[k] ?? "";
+  for (const k of ["id", "name", "host", "port", "user", "key", "extra", "bastion", "rg", "vm", "sub"]) form.elements[k].value = s[k] ?? "";
+  form.elements.type.value = s.type ?? "ssh";
   if (!s.port) form.elements.port.value = 22;
-  form.elements.host.setCustomValidity(hostProblem(form.elements.host.value));
+  validateSshForm();
   form.elements.password.placeholder = "optional";
   if (session) {
     invoke("secret_exists", { key: secretKeyFor(session) }).then((saved) => {
@@ -230,15 +292,23 @@ $("ssh-dialog").addEventListener("close", async () => {
   const dlg = $("ssh-dialog");
   if (dlg.returnValue !== "save" && dlg.returnValue !== "connect") return;
   const f = $("ssh-form").elements;
-  if (!f.host.value.trim()) return;
+  const type = f.type.value;
+  if (type === "ssh" ? !f.host.value.trim() : !f.vm.value.trim()) return;
   const s = {
     id: f.id.value || crypto.randomUUID(),
+    type,
     name: f.name.value.trim(),
-    host: f.host.value.trim(),
+    host: type === "ssh" ? f.host.value.trim() : "",
     port: Number(f.port.value) || 22,
     user: f.user.value.trim(),
     key: f.key.value.trim(),
     extra: f.extra.value.trim(),
+    ...(type === "bastion" && {
+      bastion: f.bastion.value.trim(),
+      rg: f.rg.value.trim(),
+      vm: f.vm.value.trim(),
+      sub: f.sub.value.trim(),
+    }),
   };
   const i = sessions.findIndex((x) => x.id === s.id);
   if (i >= 0) sessions[i] = s;
@@ -255,7 +325,7 @@ $("ssh-dialog").addEventListener("close", async () => {
     setStatus(String(err));
   }
   renderSessions();
-  if (dlg.returnValue === "connect") connectSsh(s);
+  if (dlg.returnValue === "connect") connectSession(s);
 });
 
 function openSettings() {
@@ -342,14 +412,17 @@ async function boot() {
     onSent,
     onActivate: (tab) => (updateStatus(), showFilesFor(tab)),
     onTabsChanged: updateStatus,
-    onClose: filesOnClose,
+    onClose: (tab) => {
+      filesOnClose(tab);
+      if (tab.spec.tunnelKey) invoke("bastion_tunnel_stop", { key: tab.spec.tunnelKey });
+    },
   });
   initFiles({ promptPassword });
   initCommandBar();
   initChat();
 
   // A webview reload leaves the previous page's shells and SFTP connections running.
-  await Promise.all([invoke("pty_kill_all"), invoke("sftp_disconnect_all")]);
+  await Promise.all([invoke("pty_kill_all"), invoke("sftp_disconnect_all"), invoke("bastion_stop_all")]);
   [settings, shells, sessions] = await Promise.all([
     invoke("get_settings"),
     invoke("list_shells"),

@@ -137,9 +137,16 @@ pub async fn sftp_connect(
     key_path: String,
     secret_key: Option<String>,
     trust: Option<String>,
+    known_host_alias: Option<String>,
 ) -> Result<String, String> {
     let issue = Arc::new(Mutex::new(HostKeyIssue::None));
-    let handler = Client { host: host.clone(), port, trust, issue: issue.clone() };
+    // Tunneled connections (Azure Bastion) land on 127.0.0.1:<random port>; check the host key
+    // under a stable alias instead — the same one passed to OpenSSH as HostKeyAlias.
+    let (kh_host, kh_port) = match known_host_alias.filter(|a| !a.is_empty()) {
+        Some(alias) => (alias, 22),
+        None => (host.clone(), port),
+    };
+    let handler = Client { host: kh_host, port: kh_port, trust, issue: issue.clone() };
     let config = Arc::new(client::Config {
         keepalive_interval: Some(Duration::from_secs(30)),
         ..Default::default()
