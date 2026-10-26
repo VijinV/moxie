@@ -58,7 +58,9 @@ body:not(.files-open) #files-panel, body:not(.ai-open) #ai-panel { visibility: h
 .item-actions button:hover { color: var(--text); }
 .filter { margin: 2px 4px 6px; padding: 5px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; outline: none; }
 .filter:focus { border-color: var(--accent); }
-.sidebar-footer { border-top: 1px solid var(--border); padding-top: 8px; }
+.sidebar-footer { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.changelog-btn { color: var(--accent); }
+.changelog-btn:hover { background: rgba(167,139,250,.08) !important; }
 
 .icon-btn { background: none; border: 0; color: var(--muted); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
 .icon-btn:hover { color: var(--text); background: var(--panel-2); }
@@ -327,3 +329,21 @@ body.monitor-open #monitor-panel { display: flex; }
 .mon-proc-cpu.hot { color: var(--danger); }
 .mon-proc-mem { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 #monitor-btn.active { border-color: var(--accent); color: var(--accent); }
+
+/* ---------------------------------------------------------------- changelog dialog */
+#changelog-dialog { width: min(520px, 92vw); }
+#changelog-dialog .changelog-header { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+.changelog-title { font-size: 14px; font-weight: 650; flex: 1; }
+.changelog-ver { font-size: 11px; font-weight: 600; background: rgba(167,139,250,.15); color: var(--accent); border: 1px solid rgba(167,139,250,.3); border-radius: 999px; padding: 1px 8px; }
+.changelog-banner { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: rgba(167,139,250,.1); border-bottom: 1px solid rgba(167,139,250,.2); font-size: 12.5px; }
+.changelog-banner.hidden { display: none; }
+.changelog-banner span { flex: 1; color: var(--accent); }
+.changelog-body { padding: 10px 16px; overflow-y: auto; max-height: 54vh; display: flex; flex-direction: column; gap: 18px; scrollbar-width: thin; scrollbar-color: #2a3042 transparent; }
+.changelog-section { display: flex; flex-direction: column; gap: 10px; }
+.changelog-section-tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.changelog-item { display: flex; gap: 12px; align-items: flex-start; }
+.changelog-icon { font-size: 15px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; flex-shrink: 0; color: var(--accent); font-family: var(--mono); }
+.changelog-item-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.changelog-item-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.changelog-item-desc code { font: 11px var(--mono); background: var(--bg); padding: 1px 4px; border-radius: 3px; color: #c7d2fe; }
+.changelog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border); }

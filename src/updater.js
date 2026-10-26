@@ -4,6 +4,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
 let pending = null;
+export const getPending = () => pending;
 
 export function initUpdater() {
   setTimeout(() => checkForUpdate(false), 8000);

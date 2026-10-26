@@ -10,7 +10,7 @@ import { powershellIntegrationArgs, bashIntegrationEnv } from "./shell.js";
 import { updateCompletion, completionKey, positionCompletion, closeCompletion } from "./completion.js";
 import { initFiles, toggleFiles, showFilesFor, filesOnClose } from "./files.js";
 import { initLayout } from "./layout.js";
-import { initUpdater, checkForUpdate } from "./updater.js";
+import { initUpdater, checkForUpdate, getPending } from "./updater.js";
 import { initMonitor, setMonitorTab } from "./monitor.js";
 
 initLayout(); // before boot(): it doesn't need the backend
@@ -476,6 +476,25 @@ function updateStatus() {
     $("status-ai").textContent = `✦ ${PROVIDER_LABEL[settings.chat_provider]} · ${ac}`;
   }
 }
+
+function openChangelog() {
+  const dlg = $("changelog-dialog");
+  const update = getPending();
+  const banner = $("changelog-update-banner");
+  if (update) {
+    $("changelog-update-text").textContent = `v${update.version} is available`;
+    banner.classList.remove("hidden");
+    $("changelog-update-btn").onclick = () => { dlg.close(); checkForUpdate(true); };
+  } else {
+    banner.classList.add("hidden");
+  }
+  dlg.showModal();
+}
+
+$("changelog-close").addEventListener("click", () => $("changelog-dialog").close());
+$("changelog-done").addEventListener("click", () => $("changelog-dialog").close());
+$("changelog-check-updates").addEventListener("click", () => { $("changelog-dialog").close(); checkForUpdate(true); });
+$("open-changelog").addEventListener("click", openChangelog);
 
 $("add-ssh").addEventListener("click", () => openSshDialog());
 $("session-filter").addEventListener("input", renderSessions);
