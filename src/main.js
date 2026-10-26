@@ -140,6 +140,12 @@ function item(label, icon, onClick) {
 }
 
 function connectSsh(s) {
+  const problem = hostProblem(s.host);
+  if (problem) {
+    setStatus(problem);
+    if (sessions.some((x) => x.id === s.id)) openSshDialog(s); // let them fix the saved host
+    return;
+  }
   const args = [];
   if (s.port && String(s.port) !== "22") args.push("-p", String(s.port));
   if (s.key) args.push("-i", s.key);
@@ -188,6 +194,21 @@ function newDefaultTab() {
 
 // ------------------------------------------------------------------ dialogs
 
+/** Explains why a value can't be an SSH host (e.g. a pasted web URL), or "" if it looks fine. */
+function hostProblem(value) {
+  const v = value.trim();
+  if (/bastion\.azure\.com/i.test(v)) {
+    return "This is an Azure Bastion web link, not an SSH host. Bastion links only open in the browser. Use the VM's IP/DNS name (if reachable), or tunnel through Bastion with the Azure CLI (az network bastion tunnel).";
+  }
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v) || v.includes("/")) {
+    return "Enter just the host name or IP address (e.g. example.com or 10.0.0.5), not a URL.";
+  }
+  if (/\s/.test(v)) return "The host can't contain spaces.";
+  return "";
+}
+
+$("ssh-form").elements.host.addEventListener("input", (e) => e.target.setCustomValidity(hostProblem(e.target.value)));
+
 function openSshDialog(session = null) {
   const dlg = $("ssh-dialog");
   const form = $("ssh-form");
@@ -195,6 +216,7 @@ function openSshDialog(session = null) {
   const s = session ?? { port: 22 };
   for (const k of ["id", "name", "host", "port", "user", "key", "extra"]) form.elements[k].value = s[k] ?? "";
   if (!s.port) form.elements.port.value = 22;
+  form.elements.host.setCustomValidity(hostProblem(form.elements.host.value));
   form.elements.password.placeholder = "optional";
   if (session) {
     invoke("secret_exists", { key: secretKeyFor(session) }).then((saved) => {
