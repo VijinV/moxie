@@ -10,8 +10,8 @@ Get the latest Windows build from **[Releases](https://github.com/VijinV/term/re
 
 | File | Use it when |
 | --- | --- |
-| [`Moxie_0.2.0_x64-setup.exe`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.2.0_x64-setup.exe) | Normal install (Start menu entry, uninstaller). Recommended |
-| [`Moxie_0.2.0_x64_en-US.msi`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.2.0_x64_en-US.msi) | Managed / IT deployment |
+| [`Moxie_0.3.0_x64-setup.exe`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.3.0_x64-setup.exe) | Normal install (Start menu entry, uninstaller). Recommended |
+| [`Moxie_0.3.0_x64_en-US.msi`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.3.0_x64_en-US.msi) | Managed / IT deployment |
 
 From 0.2.0 on, Moxie updates itself (⬆ Update in the status bar). The installers aren't code-signed yet, so Windows SmartScreen warns on first run; choose **More info → Run anyway**.
 Moxie needs the WebView2 runtime, which Windows 10/11 already include.
@@ -45,6 +45,7 @@ Moxie needs the WebView2 runtime, which Windows 10/11 already include.
 | Port forwarding | Per session: `L 5432:localhost:5432`, `R 8080:localhost:3000`, `D 1080`. **🔌** starts just the forwards, without a shell |
 | SFTP panel | Next to every SSH tab (**Ctrl+Shift+F**): browse, upload/download files and folders (drag & drop from Explorer), rename, delete, **Edit** (opens your editor; every save uploads back) |
 | Server dashboard | The panel's **Server** tab: CPU, load, memory, swap, disks, uptime and top processes, refreshed every 4 s over the panel's own connection |
+| Activity monitor | **▣ Monitor** in the toolbar: a resizable bottom panel with CPU (per core), memory, swap, network and top processes for this PC, or for the server on SSH tabs |
 | Snippets & workflows | Saved commands in the sidebar (**Ctrl+Shift+S**) with `{{name:default}}` placeholders. Workflows run line by line, wait for each command and stop at the first failure |
 
 ### AI
@@ -145,6 +146,8 @@ src-tauri/src/
   ai.rs         one-shot completions (autocomplete, Ask bar), CLI providers
   ai_tools.rs   streaming chat turns with tool calling (Claude / OpenAI)
   sftp.rs       SFTP over russh: jump hosts, host keys, transfers, edit & upload, remote exec
+  ssh_conn.rs   shared russh connect / host-key / auth helpers
+  monitor.rs    local and remote CPU, memory, network and process stats
   bastion.rs    Azure Bastion tunnels (az CLI)
   import.rs     session import (ssh config, MobaXterm, PuTTY), RDP / VNC launchers
   secrets.rs    SSH passwords in the OS credential store
@@ -156,6 +159,7 @@ src/
   completion.js autocomplete menu
   ai.js         inline suggestions, Ask bar, chat panel, agent & tools, per-session chats
   files.js      SFTP panel          dashboard.js  server dashboard
+  monitor.js    activity monitor panel
   snippets.js   snippets & workflows  find.js     find bar
   themes.js     colour schemes        shortcuts.js  shortcut reference
   updater.js    auto-update           layout.js     resizable side panels
