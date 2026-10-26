@@ -116,6 +116,7 @@ async function connect(tab, trust = null) {
       keyPath: s.key || "",
       secretKey: s.secretKey,
       trust,
+      knownHostAlias: s.hostKeyAlias ?? null,
     });
     f.home = home;
     f.status = "ready";
@@ -127,7 +128,7 @@ async function connect(tab, trust = null) {
     } else if (msg.startsWith("HOSTKEY_CHANGED:")) {
       Object.assign(f, {
         status: "error",
-        error: `WARNING: the host key for ${s.host} has CHANGED (${msg.slice(16)}). This could be a man-in-the-middle attack. If the server was reinstalled, remove its old entry from ~/.ssh/known_hosts.`,
+        error: `WARNING: the host key for ${s.label ?? s.host} has CHANGED (${msg.slice(16)}). This could be a man-in-the-middle attack. If the server was reinstalled, remove its old entry from ~/.ssh/known_hosts.`,
       });
     } else if (msg.startsWith("AUTH_")) {
       const retry = await promptPassword(
@@ -344,7 +345,7 @@ function render() {
   if (f.status === "hostkey") {
     body.innerHTML = `<div class="files-msg">First connection to <b></b>. Verify its host key fingerprint:<code></code>
       <button class="primary-btn">Trust &amp; connect</button></div>`;
-    body.querySelector("b").textContent = tab.spec.ssh.host;
+    body.querySelector("b").textContent = tab.spec.ssh.label ?? tab.spec.ssh.host;
     body.querySelector("code").textContent = f.fingerprint;
     body.querySelector("button").addEventListener("click", () => connect(tab, f.fingerprint));
     return;

@@ -57,17 +57,17 @@
           <div id="tabs"></div>
           <button id="new-tab" class="icon-btn" title="New tab (Ctrl+Shift+T)">+</button>
           <div class="spacer"></div>
-          <button id="files-btn" class="pill-btn" title="SFTP file browser (Ctrl+Shift+F)">📁 Files</button>
-          <button id="explain-btn" class="pill-btn" title="Ask AI about the recent output">✦ Explain output</button>
-          <button id="cmdbar-btn" class="pill-btn" title="Natural language → command (Ctrl+K)">✦ Command <kbd>Ctrl K</kbd></button>
-          <button id="toggle-ai" class="pill-btn" title="Toggle AI panel (Ctrl+Shift+A)">✦ AI panel</button>
+          <button id="files-btn" class="pill-btn" title="SFTP file browser (Ctrl+Shift+F)">📁<span class="label">Files</span></button>
+          <button id="explain-btn" class="pill-btn" title="Ask AI about the recent output">💡<span class="label">Explain output</span></button>
+          <button id="cmdbar-btn" class="pill-btn" title="Ask: runs commands for you and shows the answer (Ctrl+K)">✦<span class="label">Ask</span> <kbd>Ctrl K</kbd></button>
+          <button id="toggle-ai" class="pill-btn" title="Toggle AI panel (Ctrl+Shift+A)">◨<span class="label">AI panel</span></button>
         </div>
         <div id="terminals">
           <div id="empty-state">
             <div class="logo big">&gt;_</div>
             <p>Open a shell, an SSH session, or an AI agent from the sidebar.</p>
             <p class="hint">
-              <kbd>Ctrl K</kbd> describe a command ·
+              <kbd>Ctrl K</kbd> ask anything ·
               <kbd>→</kbd> accept suggestion ·
               <kbd>Ctrl Space</kbd> ask AI to complete ·
               <kbd>Ctrl Shift A</kbd> AI panel
@@ -125,12 +125,9 @@
       <div class="cmdbar-box">
         <div class="cmdbar-row">
           <span class="spark">✦</span>
-          <input id="cmdbar-input" placeholder="Describe what you want to do… e.g. find the 10 largest files here" />
+          <input id="cmdbar-input" placeholder="Ask anything… e.g. how much disk space is free? which process uses port 3000?" />
         </div>
-        <div id="cmdbar-result" class="hidden">
-          <pre id="cmdbar-cmd"></pre>
-          <div class="cmdbar-hint"><kbd>Enter</kbd> insert · <kbd>Ctrl Enter</kbd> run · <kbd>Esc</kbd> close</div>
-        </div>
+        <div id="cmdbar-answer" class="msg assistant hidden"></div>
         <div id="cmdbar-status" class="cmdbar-hint"></div>
       </div>
     </div>
@@ -139,18 +136,40 @@
       <form method="dialog" id="ssh-form">
         <h2>SSH session</h2>
         <input type="hidden" name="id" />
-        <label>Name <input name="name" placeholder="prod-web-1" /></label>
         <div class="row">
-          <label class="grow">Host <input name="host" required placeholder="10.0.0.5 or example.com" /></label>
+          <label class="grow">Name <input name="name" placeholder="prod-web-1" /></label>
+          <label>Connection
+            <select name="type">
+              <option value="ssh">SSH</option>
+              <option value="bastion">Azure Bastion</option>
+            </select>
+          </label>
+        </div>
+        <div class="row" data-for="ssh">
+          <label class="grow">Host <input name="host" placeholder="10.0.0.5 or example.com" /></label>
           <label class="port">Port <input name="port" type="number" value="22" /></label>
         </div>
+        <fieldset data-for="bastion">
+          <legend>Azure Bastion</legend>
+          <div class="row">
+            <label class="grow">Bastion name <input name="bastion" placeholder="my-bastion" /></label>
+            <label class="grow">Resource group <input name="rg" placeholder="my-rg" /></label>
+          </div>
+          <label>VM resource ID <input name="vm" placeholder="/subscriptions/…/resourceGroups/…/providers/Microsoft.Compute/virtualMachines/my-vm" /></label>
+          <label>Subscription (optional) <input name="sub" placeholder="subscription ID — defaults to the az CLI's current one" /></label>
+          <p class="hint">
+            Uses <code>az network bastion tunnel</code>: needs the Azure CLI (<code>az login</code>, <code>az extension add -n bastion</code>)
+            and a Bastion Standard or Premium SKU with <b>Native client support</b> enabled. Find the VM resource ID under the VM's
+            Properties in the Azure portal.
+          </p>
+        </fieldset>
         <label>Username <input name="user" placeholder="root" /></label>
         <div class="row">
           <label class="grow">Password <input name="password" type="password" autocomplete="off" placeholder="optional" /></label>
           <label class="check remember"><input type="checkbox" name="remember" checked /> Remember</label>
         </div>
         <label>Private key (optional) <input name="key" placeholder="C:\Users\you\.ssh\id_ed25519 — defaults to ~/.ssh/id_*" /></label>
-        <label>Extra ssh args (optional) <input name="extra" placeholder="-J bastion -o ServerAliveInterval=30" /></label>
+        <label>Extra ssh args (optional) <input name="extra" placeholder="-o ServerAliveInterval=30" /></label>
         <p class="hint">
           The terminal uses your system OpenSSH client (so ~/.ssh/config, agents and known_hosts work) and
           types the saved password at the login prompt. Remembered passwords are kept in the OS credential
@@ -232,6 +251,7 @@
           <div class="row">
             <label class="grow">claude path <input name="claude_cli_path" placeholder="auto (PATH)" /></label>
             <label class="grow">codex path <input name="codex_cli_path" placeholder="auto (PATH)" /></label>
+            <label class="grow">az path (Bastion) <input name="az_cli_path" placeholder="auto (PATH)" /></label>
           </div>
         </fieldset>
         <fieldset>

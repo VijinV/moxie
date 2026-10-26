@@ -137,9 +137,16 @@ pub async fn sftp_connect(
     key_path: String,
     secret_key: Option<String>,
     trust: Option<String>,
+    known_host_alias: Option<String>,
 ) -> Result<String, String> {
     let issue = Arc::new(Mutex::new(HostKeyIssue::None));
-    let handler = Client { host: host.clone(), port, trust, issue: issue.clone() };
+    // Tunneled connections (Azure Bastion) land on 127.0.0.1:<random port>; check the host key
+    // under a stable alias instead — the same one passed to OpenSSH as HostKeyAlias.
+    let (kh_host, kh_port) = match known_host_alias.filter(|a| !a.is_empty()) {
+        Some(alias) => (alias, 22),
+        None => (host.clone(), port),
+    };
+    let handler = Client { host: kh_host, port: kh_port, trust, issue: issue.clone() };
     let config = Arc::new(client::Config {
         keepalive_interval: Some(Duration::from_secs(30)),
         ..Default::default()
@@ -446,6 +453,15 @@ pub async fn sftp_open(app: AppHandle, state: State<'_, SftpState>, conn_id: Str
 pub fn open_path(path: &Path) -> Result<(), String> {
     let program = if cfg!(windows) { "explorer" } else if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
     std::process::Command::new(program).arg(path).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Opens an http(s) link from an AI answer in the default browser.
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("only http(s) links can be opened".into());
+    }
+    open_path(Path::new(&url))
 }
 
 #[tauri::command]
