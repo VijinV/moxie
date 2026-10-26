@@ -58,6 +58,7 @@ function onKey(tab, ev) {
     if (key === "a") return toggleAiPanel(), false;
     if (key === "m") return toggleChatFull(), false;
     if (key === "o") return toggleEditor(), false;
+    if (key === "l") return toggleSidebar(), false;
     if (key === "t") return newDefaultTab(), false;
     if (key === "f") return toggleFiles(), false;
     if (key === "w") return closeTab(tab.id), false;
@@ -96,6 +97,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.ctrlKey && ev.shiftKey && key === "a") (ev.preventDefault(), toggleAiPanel());
   else if (ev.ctrlKey && ev.shiftKey && key === "m") (ev.preventDefault(), toggleChatFull());
   else if (ev.ctrlKey && ev.shiftKey && key === "o") (ev.preventDefault(), toggleEditor());
+  else if (ev.ctrlKey && ev.shiftKey && key === "l") (ev.preventDefault(), toggleSidebar());
   else if (ev.ctrlKey && ev.shiftKey && key === "t") (ev.preventDefault(), newDefaultTab());
   else if (ev.ctrlKey && ev.shiftKey && key === "f") (ev.preventDefault(), toggleFiles());
   else if (ev.ctrlKey && !ev.shiftKey && key === "k" && activeTab()) (ev.preventDefault(), openCommandBar());
@@ -164,6 +166,69 @@ function renderShells() {
 }
 
 const SESSION_ICON = { ssh: "⇄", bastion: "☁", rdp: "🖥", vnc: "🖵" };
+// Per-session look: colour (icon, stripe and tab accent), icon, and tags.
+const SESSION_COLORS = ["#f7768e", "#ff9e64", "#e0af68", "#9ece6a", "#2ac3de", "#7aa2f7", "#bb9af7", "#ff79c6", "#737aa2"];
+const ICON_PICKS = ["🖥", "🗄", "🌐", "☁", "🐳", "🔒", "🚀", "🧪", "⚙", "📦", "🔥", "⭐"];
+const parseTags = (text) => [...new Set(String(text ?? "").split(/[,\n]/).map((t) => t.trim().replace(/^#/, "")).filter(Boolean))];
+
+/** The colour + icon pickers in the session dialog. */
+function renderLookPickers(s) {
+  const form = $("ssh-form");
+  const setColor = (c) => {
+    form.elements.color.value = c;
+    for (const b of $("ssh-colors").children) b.classList.toggle("on", (b.dataset.color ?? "") === c);
+    const custom = $("ssh-colors").querySelector("input[type=color]");
+    custom.parentElement.classList.toggle("on", !!c && !SESSION_COLORS.includes(c));
+  };
+  $("ssh-colors").innerHTML =
+    `<button type="button" class="swatch none" data-color="" title="No colour">∅</button>` +
+    SESSION_COLORS.map((c) => `<button type="button" class="swatch" data-color="${c}" style="background:${c}" title="${c}"></button>`).join("") +
+    `<label class="swatch custom" title="Custom colour">+<input type="color" /></label>`;
+  $("ssh-colors").onclick = (e) => {
+    const b = e.target.closest("button[data-color]");
+    if (b) setColor(b.dataset.color);
+  };
+  $("ssh-colors").querySelector("input[type=color]").oninput = (e) => setColor(e.target.value);
+  setColor(s.color ?? "");
+
+  const icons = $("ssh-icons");
+  icons.innerHTML =
+    `<button type="button" class="icon-pick" data-icon="" title="Default for the connection type">${SESSION_ICON[s.type ?? "ssh"]}</button>` +
+    ICON_PICKS.map((i) => `<button type="button" class="icon-pick" data-icon="${i}">${i}</button>`).join("") +
+    `<input name="icon" maxlength="4" placeholder="or type" title="Any emoji or 1–2 characters" />`;
+  const setIcon = (v) => {
+    form.elements.icon.value = v;
+    for (const b of icons.querySelectorAll(".icon-pick")) b.classList.toggle("on", b.dataset.icon === v);
+  };
+  icons.onclick = (e) => {
+    const b = e.target.closest(".icon-pick");
+    if (b) setIcon(b.dataset.icon);
+  };
+  form.elements.icon.oninput = (e) => setIcon(e.target.value.trim());
+  setIcon(s.icon ?? "");
+
+  form.elements.tags.value = (s.tags ?? []).join(", ");
+  const preview = () => renderTagChips($("ssh-tag-preview"), parseTags(form.elements.tags.value));
+  form.elements.tags.oninput = preview;
+  preview();
+}
+
+function renderTagChips(box, tags, max = Infinity) {
+  box.innerHTML = "";
+  for (const t of tags.slice(0, max)) {
+    const c = document.createElement("span");
+    c.className = "tag-chip";
+    c.textContent = t;
+    box.append(c);
+  }
+  if (tags.length > max) {
+    const more = document.createElement("span");
+    more.className = "tag-chip more";
+    more.textContent = `+${tags.length - max}`;
+    more.title = tags.slice(max).join(", ");
+    box.append(more);
+  }
+}
 const DEFAULT_PORT = { ssh: 22, bastion: 22, rdp: 3389, vnc: 5900 };
 
 /** Sidebar sessions, grouped by folder (folders collapse; state remembered per viewer). */
@@ -171,7 +236,13 @@ function renderSessions() {
   const ul = $("ssh-list");
   const q = $("session-filter").value.toLowerCase();
   ul.innerHTML = "";
-  const list = sessions.filter((s) => `${s.name} ${s.host} ${s.user} ${s.vm ?? ""} ${s.folder ?? ""}`.toLowerCase().includes(q));
+  // "#tag" words must match a tag exactly; other words match anywhere (name, host, user, folder, tags).
+  const words = q.split(/\s+/).filter(Boolean);
+  const list = sessions.filter((s) => {
+    const tags = (s.tags ?? []).map((t) => t.toLowerCase());
+    const hay = `${s.name} ${s.host} ${s.user} ${s.vm ?? ""} ${s.folder ?? ""} ${tags.join(" ")}`.toLowerCase();
+    return words.every((w) => (w.startsWith("#") && w.length > 1 ? tags.includes(w.slice(1)) : hay.includes(w)));
+  });
   if (!list.length) {
     ul.innerHTML = `<li class="muted small">${sessions.length ? "No matches" : "No saved sessions yet · ⇩ to import"}</li>`;
     return;
@@ -218,7 +289,14 @@ function renderSessions() {
 
 function sessionItem(s) {
   const type = s.type ?? "ssh";
-  const li = item(sessionTitle(s), SESSION_ICON[type] ?? "⇄", () => connectSession(s));
+  const li = item(sessionTitle(s), s.icon || SESSION_ICON[type] || "⇄", () => connectSession(s));
+  if (s.color) li.style.setProperty("--session-color", s.color), li.classList.add("colored");
+  if (s.tags?.length) {
+    const chips = document.createElement("span");
+    chips.className = "tag-chips";
+    renderTagChips(chips, s.tags, 2);
+    li.querySelector(".item-label").after(chips);
+  }
   li.title =
     type === "bastion"
       ? `${s.user ? s.user + "@" : ""}${vmName(s.vm)} via Azure Bastion ${s.bastion}`
@@ -429,6 +507,8 @@ function sshSpec(s, { host, port, hostKeyAlias = null, tunnelKey = null, tunnels
     args,
     kind: "ssh",
     sessionId: s.id,
+    color: s.color || "",
+    icon: s.icon || "",
     tunnelsOnly,
     secretKey,
     tunnelKey,
@@ -629,6 +709,7 @@ function openSshDialog(session = null) {
   form.elements.integrate.checked = s.integrate !== false;
   form.elements.type.value = s.type ?? "ssh";
   form.elements.type.dataset.prev = form.elements.type.value;
+  renderLookPickers(s);
   if (!s.port) form.elements.port.value = 22;
   validateSshForm();
   form.elements.password.placeholder = "optional";
@@ -659,6 +740,9 @@ $("ssh-dialog").addEventListener("close", async () => {
     extra: f.extra.value.trim(),
     forwards: f.forwards.value.trim(),
     integrate: f.integrate.checked,
+    color: f.color.value,
+    icon: f.icon.value.trim(),
+    tags: parseTags(f.tags.value),
     ...(type === "bastion" && {
       bastion: f.bastion.value.trim(),
       rg: f.rg.value.trim(),
@@ -743,6 +827,46 @@ function toggleAiPanel(force) {
   else activeTab()?.term.focus();
 }
 
+/** Hides the sidebar (sessions, shells, snippets); the terminal takes the space. Remembered. */
+function toggleSidebar(force) {
+  const collapsed = document.body.classList.toggle("side-collapsed", force === undefined ? undefined : !force);
+  closeSidePeek();
+  try { localStorage.setItem("moxie-side-collapsed", collapsed ? "1" : ""); } catch {}
+}
+
+// Collapsed sidebar: the rail's section icons slide the full sidebar out over the terminal
+// ("peek"); it closes again on a click outside, Esc, or once something in it is opened.
+function openSidePeek(section) {
+  document.body.classList.add("side-peek");
+  const target = { shells: "shell-list", sessions: "session-filter", snippets: "snippet-filter", agents: "agent-list" }[section];
+  const el = target && $(target);
+  el?.closest("section")?.scrollIntoView({ block: "nearest" });
+  if (el?.tagName === "INPUT") el.focus();
+}
+function closeSidePeek() {
+  document.body.classList.remove("side-peek");
+}
+$("side-rail").addEventListener("click", (e) => {
+  const what = e.target.closest("[data-rail]")?.dataset.rail;
+  if (!what) return;
+  if (what === "expand") return toggleSidebar(true);
+  if (what === "new-ssh") return $("add-ssh").click();
+  if (what === "settings") return $("open-settings").click();
+  if (what === "changelog") return $("open-changelog").click();
+  const same = document.body.classList.contains("side-peek") && $("side-rail").dataset.open === what;
+  $("side-rail").dataset.open = what;
+  if (same) closeSidePeek();
+  else openSidePeek(what);
+});
+document.addEventListener("mousedown", (e) => {
+  if (document.body.classList.contains("side-peek") && !e.target.closest("#sidebar, #side-rail, dialog")) closeSidePeek();
+});
+document.addEventListener("keydown", (e) => e.key === "Escape" && closeSidePeek());
+// Opening a shell, session or agent from the peeked sidebar closes it.
+$("sidebar").addEventListener("click", (e) => {
+  if (document.body.classList.contains("side-peek") && e.target.closest(".list li:not(.muted)") && !e.target.closest(".item-actions")) setTimeout(closeSidePeek, 0);
+});
+
 /** Chat only: the AI panel covers the terminal area (the terminals keep running underneath). */
 function toggleChatFull(force) {
   const full = document.body.classList.toggle("chat-full", force);
@@ -806,6 +930,8 @@ $("open-settings").addEventListener("click", openSettings);
 $("new-tab").addEventListener("click", newDefaultTab);
 $("toggle-ai").addEventListener("click", () => toggleAiPanel());
 $("chat-full").addEventListener("click", () => toggleChatFull());
+$("side-toggle").addEventListener("click", () => toggleSidebar());
+try { if (localStorage.getItem("moxie-side-collapsed")) toggleSidebar(false); } catch {}
 try { if (localStorage.getItem("moxie-chat-full")) toggleChatFull(true); } catch {}
 $("cmdbar-btn").addEventListener("click", () => openCommandBar());
 $("files-btn").addEventListener("click", () => toggleFiles());

@@ -394,6 +394,10 @@ Use short headings and bullet points. Base it only on the attached commands and 
 // Commands that always need a click, even in auto-run mode.
 const DANGEROUS =
   /\brm\s+(-\w*[rf]|--recursive|--force)|\bmkfs|\bdd\s+if=|\b(shutdown|reboot|halt|poweroff)\b|Remove-Item\b.*-(Recurse|Force)|\bformat\s+[a-z]:|\bdel\s+\/[sqf]|\brd\s+\/s|\brmdir\s+\/s|:\(\)\s*\{|>\s*\/dev\/sd|\bgit\s+(push\s+.*(--force|-f\b)|reset\s+--hard|clean\s+-\w*f)|\bdrop\s+(table|database)|\bchmod\s+-R\s+777\s+\/|\bchown\s+-R\b.*\s\/\s*$|Stop-Computer|Restart-Computer|Clear-Disk|\bkill\s+-9\s+1\b/i;
+// Anything that deletes files or data: always asks too, whatever the agent mode.
+const DELETES =
+  /(^|[;&|({`]|\$\(|\b(sudo|xargs|exec|then|do)\s+)\s*(rm|rmdir|unlink|shred|srm|del|erase|rd|ri|Remove-Item)(\s|$)|-exec\s+rm\b|\bfind\b.*\s-delete\b|\bgit\s+(rm|clean)\b|\b(docker|podman)\s+(rm|rmi|(system|volume|image|container|network)\s+(rm|prune))\b|\bkubectl\s+delete\b|\bdelete\s+from\b|\btruncate\s+(table\b|-s\s*0)|\bdropdb\b/i;
+const needsOk = (cmd) => DANGEROUS.test(cmd) || DELETES.test(cmd);
 const MAX_STEPS = 25;
 
 function agentMode() {
@@ -684,8 +688,12 @@ function codeBlockAction(e) {
   const btn = e.target.closest("[data-action]");
   if (!btn) return;
   const code = btn.closest(".code").querySelector("code").textContent;
-  if (btn.dataset.action === "copy") navigator.clipboard.writeText(code);
-  else sendText(activeTab(), code.replace(/\n+$/, ""), btn.dataset.action === "run");
+  if (btn.dataset.action === "copy") return navigator.clipboard.writeText(code);
+  const run = btn.dataset.action === "run";
+  const cmd = code.replace(/\n+$/, "");
+  // Off mode runs nothing by itself, but a suggested delete still gets a second look.
+  if (run && needsOk(cmd) && !confirm(`This deletes or destroys something:\n\n${cmd}\n\nRun it in ${activeTab()?.spec.title ?? "the terminal"}?`)) return;
+  sendText(activeTab(), cmd, run);
 }
 
 /** True while a reply is streaming or an agent command is running. */
@@ -798,7 +806,7 @@ async function executeCommand(cmd) {
   if (++agent.steps > MAX_STEPS) return { ok: false, reason: "max-steps", message: `Stopped after ${MAX_STEPS} commands. Send a message to continue.` };
   if (!cmd.trim()) return { ok: false, reason: "empty", message: "Empty command." };
 
-  const dangerous = DANGEROUS.test(cmd);
+  const dangerous = needsOk(cmd);
   if (agentMode() === "ask" || dangerous) {
     emit({ type: "confirm", cmd, dangerous });
     const ok = await confirmRun(cmd, tab, dangerous);
@@ -1001,7 +1009,7 @@ function confirmRun(cmd, tab, dangerous) {
   const box = document.createElement("div");
   box.className = "agent-confirm";
   box.innerHTML = `<div class="muted small">Run in <b></b>?</div><code></code>
-    ${dangerous ? '<div class="warn">⚠ This looks destructive — it always needs your OK, even in Auto-run.</div>' : ""}
+    ${dangerous ? '<div class="warn">⚠ This deletes or destroys something, so it always needs your OK, in every mode.</div>' : ""}
     <div class="btns"><button class="ghost-btn" data-v="0">Skip</button><button class="primary-btn" data-v="1">Run ▶</button></div>`;
   box.querySelector("b").textContent = tab.spec.title;
   box.querySelector("code").textContent = cmd;

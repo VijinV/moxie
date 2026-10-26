@@ -416,10 +416,12 @@ function renderTabs() {
     const b = document.createElement("div");
     b.className = "tab" + (g.id === activeGroupId ? " active" : "") + (g.panes.every((x) => x.exited) ? " exited" : "");
     const icon = { shell: "›_", ssh: "⇄", agent: "✦" }[p.spec.kind] ?? "›_";
-    b.innerHTML = `<span class="tab-icon kind-${p.spec.kind}">${icon}</span><span class="tab-title"></span>${
+    b.innerHTML = `<span class="tab-icon kind-${p.spec.kind}"></span><span class="tab-title"></span>${
       g.panes.length > 1 ? `<span class="tab-split" title="${g.panes.length} panes">⊞${g.panes.length}</span>` : ""
     }<button class="tab-close" title="Close tab">×</button>`;
     b.querySelector(".tab-title").textContent = p.spec.title;
+    b.querySelector(".tab-icon").textContent = p.spec.icon || icon;
+    if (p.spec.color) b.style.setProperty("--session-color", p.spec.color), b.classList.add("colored");
     b.title = g.panes.map((x) => x.spec.title).join(" | ");
     b.addEventListener("mousedown", (e) => {
       if (e.button === 1) return closeGroup(g);

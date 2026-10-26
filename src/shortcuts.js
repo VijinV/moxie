@@ -27,6 +27,7 @@ export const SHORTCUTS = [
     ["Ctrl+Shift+A", "Toggle the AI panel"],
     ["Ctrl+Shift+M", "Chat full view (hide the terminal)"],
     ["Ctrl+Shift+O", "Editor / terminal"],
+    ["Ctrl+Shift+L", "Collapse sidebar to icons / expand"],
     ["Ctrl+S (in the editor)", "Save the file"],
   ]],
   ["Panels", [

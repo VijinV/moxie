@@ -7,10 +7,14 @@ const KEY = "moxie.layout";
 const DEFAULTS = { side: 240, files: 330, ai: 400 };
 const LIMITS = { side: [170, 420], files: [220, 700], ai: [300, 900] };
 const MAIN_MIN = 380;
+const RAIL = 48; // collapsed sidebar: icons only
 
 let saved = load();
 const app = () => document.getElementById("app");
-const isOpen = (panel) => panel === "side" || document.body.classList.contains(`${panel === "files" ? "files" : "ai"}-open`);
+const isOpen = (panel) =>
+  panel === "side"
+    ? !document.body.classList.contains("side-collapsed")
+    : document.body.classList.contains(`${panel === "files" ? "files" : "ai"}-open`);
 
 function load() {
   try {
@@ -31,13 +35,13 @@ const clamp = (v, [lo, hi]) => Math.max(lo, Math.min(hi, Math.round(v)));
 /** Effective widths: saved sizes, squeezed if the window can't fit them plus the terminal. */
 function effective() {
   const w = {
-    side: saved.side,
+    side: isOpen("side") ? saved.side : RAIL,
     files: isOpen("files") ? saved.files : 0,
     ai: isOpen("ai") ? saved.ai : 0,
   };
   let excess = w.side + w.files + w.ai + MAIN_MIN - innerWidth;
   for (const k of ["ai", "files", "side"]) {
-    if (excess <= 0 || !w[k]) continue;
+    if (excess <= 0 || !w[k] || !isOpen(k)) continue;
     const give = Math.min(excess, w[k] - LIMITS[k][0]);
     w[k] -= give;
     excess -= give;
@@ -56,7 +60,7 @@ export function applyLayout() {
     h.style.left = `${x - 3}px`;
     h.hidden = !show;
   };
-  handle("side", w.side, true);
+  handle("side", w.side, isOpen("side"));
   handle("files", w.side + w.files, w.files > 0);
   handle("ai", innerWidth - w.ai, w.ai > 0);
 }

@@ -15,6 +15,11 @@
   color-scheme: dark;
 }
 
+/* Thin, themed scrollbars everywhere (the Windows default is wide, light and has arrow buttons).
+   Elements that hide theirs (scrollbar-width: none) are more specific and keep doing so. */
+* { scrollbar-width: thin; scrollbar-color: #2a3042 transparent; }
+*:hover { scrollbar-color: #3a4260 transparent; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 var(--ui-font); overflow: hidden; }
 button { font: inherit; color: inherit; cursor: pointer; }
@@ -371,7 +376,7 @@ dialog.wide { width: min(780px, 94vw); }
 
 /* AI panel: session scope, quick actions, tool notes, chat search */
 .chat-scope { font-size: 11px; font-weight: 500; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 0 7px; margin-left: 6px; }
-.chat-quick { display: flex; gap: 6px; padding: 6px 10px 0; flex-wrap: wrap; }
+.chat-quick { display: flex; gap: 6px; padding: 6px 10px; flex-wrap: wrap; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .chat-quick .pill-btn.on { border-color: var(--accent); background: #2a2446; }
 .tool-note { font-size: 11.5px; color: var(--muted); padding: 0 4px; font-family: var(--mono); }
 .history-search { width: calc(100% - 8px); margin: 4px; }
@@ -477,3 +482,42 @@ body.editor-open #editor-view { display: flex; }
 .changelog-update-notes h2 { font-size: 13.5px; margin: 0 0 6px; }
 .changelog-update-notes h3 { font-size: 12px; margin: 10px 0 4px; color: var(--accent); }
 .changelog-update-notes.hidden { display: none; }
+
+/* Collapsible sidebar: collapsed, an icon rail (48px) sits over the sidebar's grid column; the
+   rail's section icons slide the full sidebar out over the terminal ("peek"). */
+#sidebar { grid-column: 1; grid-row: 1; }
+#files-panel { grid-column: 2; grid-row: 1; }
+#main { grid-column: 3; grid-row: 1; }
+#ai-panel { grid-column: 4; grid-row: 1; }
+.brand .side-collapse { margin-left: auto; display: grid; place-items: center; width: 26px; height: 24px; padding: 0; }
+#side-rail { display: none; }
+body.side-collapsed #side-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; position: fixed; left: 0; top: 0; bottom: 0; width: 48px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--border); z-index: 41; }
+.rail-btn { position: relative; width: 34px; height: 34px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px; color: var(--muted); }
+.rail-btn:hover { color: var(--text); background: var(--panel-2); }
+.rail-sep { width: 22px; height: 1px; background: var(--border); margin: 4px 0; }
+.rail-spacer { flex: 1; }
+.rail-dot { display: none; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+body:has(#open-changelog.has-update) .rail-dot { display: block; }
+body.side-collapsed #sidebar { visibility: hidden; }
+body.side-collapsed.side-peek #sidebar { visibility: visible; position: fixed; left: 48px; top: 0; bottom: 0; width: 260px; z-index: 40; box-shadow: 10px 0 28px rgba(0, 0, 0, .45); }
+body.side-collapsed.side-peek #side-rail .rail-btn[data-rail="expand"] { color: var(--text); }
+body.side-collapsed .brand .side-collapse { display: none; }
+
+/* Session colour, icon and tags */
+.look-row { align-items: flex-start; }
+.swatches, .icon-picks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
+.swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer; display: grid; place-items: center; font-size: 12px; color: var(--muted); background: var(--panel-2); position: relative; }
+.swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg) inset; }
+.swatch.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.icon-pick { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel-2); padding: 0; font-size: 14px; display: grid; place-items: center; }
+.icon-pick.on { border-color: var(--accent); background: #2a2446; }
+.icon-picks input { width: 70px; }
+.tag-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+#ssh-tag-preview:empty { display: none; }
+.tag-chip { font-size: 10.5px; line-height: 1; padding: 3px 6px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.list li .tag-chips { flex-wrap: nowrap; overflow: hidden; flex-shrink: 1; }
+.list li .item-label { flex-shrink: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+.list li.colored { box-shadow: inset 3px 0 0 var(--session-color); }
+.list li.colored .item-icon { color: var(--session-color); }
+.tab.colored .tab-icon { color: var(--session-color); }
+.tab.colored { box-shadow: inset 0 -2px 0 var(--session-color); }
