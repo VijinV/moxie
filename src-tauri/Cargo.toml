@@ -1,6 +1,6 @@
 [package]
 name = "moxie"
-version = "0.1.1"
+version = "0.1.2"
 description = "AI-native terminal & SSH client (MobaXterm alternative) — prototype"
 edition = "2021"
 
