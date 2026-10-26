@@ -25,8 +25,27 @@ if (!env.TAURI_SIGNING_PRIVATE_KEY) {
 env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ??= "";
 env.PATH = `${join(homedir(), ".cargo", "bin")}${process.platform === "win32" ? ";" : ":"}${env.PATH}`;
 
-console.log(`Building Moxie ${version}…`);
-execSync("npm run tauri build", { cwd: root, env, stdio: "inherit" });
+// Windows code signing (removes the SmartScreen warning) — whichever is configured:
+//   WINDOWS_CERT_THUMBPRINT     a code-signing certificate installed in the Windows cert store
+//   AZURE_SIGNING_ENDPOINT + AZURE_SIGNING_ACCOUNT + AZURE_SIGNING_PROFILE
+//                               Azure Trusted Signing (needs `trusted-signing-cli` on PATH and
+//                               az login / AZURE_CLIENT_ID+SECRET+TENANT_ID)
+// Neither set: the installers are built unsigned, as before.
+const signing = (() => {
+  if (env.WINDOWS_CERT_THUMBPRINT) {
+    return { certificateThumbprint: env.WINDOWS_CERT_THUMBPRINT, digestAlgorithm: "sha256", timestampUrl: "http://timestamp.digicert.com" };
+  }
+  if (env.AZURE_SIGNING_ENDPOINT && env.AZURE_SIGNING_ACCOUNT && env.AZURE_SIGNING_PROFILE) {
+    return { signCommand: `trusted-signing-cli -e ${env.AZURE_SIGNING_ENDPOINT} -a ${env.AZURE_SIGNING_ACCOUNT} -c ${env.AZURE_SIGNING_PROFILE} %1` };
+  }
+  return null;
+})();
+// Passed as a file: JSON on the command line doesn't survive npm + cmd.exe quoting.
+const signingConf = join(root, "src-tauri", "target", "signing.conf.json");
+if (signing) writeFileSync(signingConf, JSON.stringify({ bundle: { windows: signing } }));
+const configArg = signing ? ` --config "${signingConf}"` : "";
+console.log(`Building Moxie ${version}${signing ? " (code-signed)" : " (not code-signed)"}…`);
+execSync(`npm run tauri build --${configArg}`, { cwd: root, env, stdio: "inherit" });
 
 const bundle = join(root, "src-tauri/target/release/bundle");
 const setup = `Moxie_${version}_x64-setup.exe`;
