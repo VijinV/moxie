@@ -7,16 +7,15 @@
 //!   HOSTKEY_CHANGED:<fingerprint>  → refuse (possible MITM)
 //!   AUTH_NEED_PASSWORD / AUTH_FAILED → ask for a password, then retry
 
-use russh::client::{self, KeyboardInteractiveAuthResponse};
-use russh::keys::{self, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
+use crate::ssh_conn::{authenticate, Client, HostKeyIssue};
+use russh::client;
 use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::{FileType, OpenFlags};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -73,97 +72,6 @@ fn conn(state: &SftpState, id: &str) -> Result<Arc<Conn>, String> {
 }
 
 // ---------------------------------------------------------------- connect
-
-#[derive(Default)]
-enum HostKeyIssue {
-    #[default]
-    None,
-    Unknown(String),
-    Changed(String),
-}
-
-struct Client {
-    host: String,
-    port: u16,
-    trust: Option<String>,
-    issue: Arc<Mutex<HostKeyIssue>>,
-}
-
-impl client::Handler for Client {
-    type Error = russh::Error;
-
-    async fn check_server_key(&mut self, server_key: &PublicKeyOrCertificate) -> Result<bool, Self::Error> {
-        let key = match server_key {
-            PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
-            PublicKeyOrCertificate::Certificate(cert) => PublicKey::new(cert.public_key().clone(), ""),
-        };
-        let fp = key.fingerprint(HashAlg::Sha256).to_string();
-        match keys::check_known_hosts(&self.host, self.port, &key) {
-            Ok(true) => Ok(true),
-            Err(keys::Error::KeyChanged { .. }) => {
-                *self.issue.lock().unwrap() = HostKeyIssue::Changed(fp);
-                Ok(false)
-            }
-            _ if self.trust.as_deref() == Some(fp.as_str()) => {
-                let _ = keys::known_hosts::learn_known_hosts(&self.host, self.port, &key);
-                Ok(true)
-            }
-            _ => {
-                *self.issue.lock().unwrap() = HostKeyIssue::Unknown(fp);
-                Ok(false)
-            }
-        }
-    }
-}
-
-fn candidate_keys(key_path: &str) -> Vec<PathBuf> {
-    if !key_path.trim().is_empty() {
-        return vec![PathBuf::from(key_path.trim())];
-    }
-    let Some(ssh) = dirs::home_dir().map(|h| h.join(".ssh")) else { return vec![] };
-    ["id_ed25519", "id_ecdsa", "id_rsa"].iter().map(|n| ssh.join(n)).filter(|p| p.exists()).collect()
-}
-
-async fn authenticate(
-    handle: &mut client::Handle<Client>,
-    user: &str,
-    key_path: &str,
-    password: Option<&str>,
-) -> Result<bool, russh::Error> {
-    for path in candidate_keys(key_path) {
-        // Encrypted keys: the saved password doubles as the key passphrase.
-        let key = keys::load_secret_key(&path, None).or_else(|_| match password {
-            Some(p) => keys::load_secret_key(&path, Some(p)),
-            None => Err(keys::Error::CouldNotReadKey),
-        });
-        let Ok(key) = key else { continue };
-        let hash = handle.best_supported_rsa_hash().await?.flatten();
-        let res = handle
-            .authenticate_publickey(user, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
-            .await?;
-        if res.success() {
-            return Ok(true);
-        }
-    }
-
-    let Some(password) = password else { return Ok(false) };
-    if handle.authenticate_password(user, password).await?.success() {
-        return Ok(true);
-    }
-    // Many servers only allow passwords via keyboard-interactive.
-    let mut resp = handle.authenticate_keyboard_interactive_start(user, None).await?;
-    for _ in 0..5 {
-        match resp {
-            KeyboardInteractiveAuthResponse::Success => return Ok(true),
-            KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(false),
-            KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
-                let answers = prompts.iter().map(|_| password.to_string()).collect();
-                resp = handle.authenticate_keyboard_interactive_respond(answers).await?;
-            }
-        }
-    }
-    Ok(false)
-}
 
 /// Connects and returns the remote home directory.
 #[tauri::command]

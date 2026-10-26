@@ -24,3 +24,4 @@ tauri-plugin-dialog = "2"
 keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+sysinfo = "0.33"

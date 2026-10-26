@@ -13,12 +13,13 @@ import { powershellIntegrationArgs, bashIntegrationEnv } from "./shell.js";
 import { updateCompletion, completionKey, positionCompletion, closeCompletion } from "./completion.js";
 import { initFiles, toggleFiles, showFilesFor, filesOnClose, openRemotePath } from "./files.js";
 import { initLayout } from "./layout.js";
-import { initUpdater, checkForUpdate } from "./updater.js";
 import { openShortcuts } from "./shortcuts.js";
 import { initFind, openFind } from "./find.js";
 import { THEMES, FONTS } from "./themes.js";
 import { initSnippets, openSnippetEditor, focusSnippets } from "./snippets.js";
 import { initDashboard, refreshDashboard } from "./dashboard.js";
+import { initUpdater, checkForUpdate, getPending } from "./updater.js";
+import { initMonitor, setMonitorTab } from "./monitor.js";
 
 initLayout(); // before boot(): it doesn't need the backend
 
@@ -760,6 +761,25 @@ function updateStatus() {
   }
 }
 
+function openChangelog() {
+  const dlg = $("changelog-dialog");
+  const update = getPending();
+  const banner = $("changelog-update-banner");
+  if (update) {
+    $("changelog-update-text").textContent = `v${update.version} is available`;
+    banner.classList.remove("hidden");
+    $("changelog-update-btn").onclick = () => { dlg.close(); checkForUpdate(true); };
+  } else {
+    banner.classList.add("hidden");
+  }
+  dlg.showModal();
+}
+
+$("changelog-close").addEventListener("click", () => $("changelog-dialog").close());
+$("changelog-done").addEventListener("click", () => $("changelog-dialog").close());
+$("changelog-check-updates").addEventListener("click", () => { $("changelog-dialog").close(); checkForUpdate(true); });
+$("open-changelog").addEventListener("click", openChangelog);
+
 $("add-ssh").addEventListener("click", () => openSshDialog());
 $("session-filter").addEventListener("input", renderSessions);
 $("open-settings").addEventListener("click", openSettings);
@@ -774,7 +794,7 @@ $("explain-btn").addEventListener("click", () => {
 });
 $("chat-provider").addEventListener("change", (e) => saveSettings({ ...settings, chat_provider: e.target.value }));
 
-// ------------------------------------------------------------------ boot
+//------------------------------------------------------------------ boot
 
 async function boot() {
   initTerminals({
@@ -782,7 +802,7 @@ async function boot() {
     onInput: trackInput,
     onCursor: (tab) => (positionGhost(tab), positionCompletion(tab)),
     onSent,
-    onActivate: (tab) => (updateStatus(), showFilesFor(tab), refreshDashboard(), onPaneActivated(tab)),
+    onActivate: (tab) => (updateStatus(), showFilesFor(tab), refreshDashboard(), setMonitorTab(tab), onPaneActivated(tab)),
     onTabsChanged: () => (updateStatus(), saveWorkspaceSoon()),
     onOpenLink: openLink,
     onOpenPath: openPath,
@@ -807,6 +827,7 @@ async function boot() {
     },
   });
   initDashboard();
+  initMonitor();
   initUpdater();
   $("check-updates").addEventListener("click", () => checkForUpdate(true));
   initCommandBar();

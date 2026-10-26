@@ -58,7 +58,9 @@ body:not(.files-open) #files-panel, body:not(.ai-open) #ai-panel { visibility: h
 .item-actions button:hover { color: var(--text); }
 .filter { margin: 2px 4px 6px; padding: 5px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; outline: none; }
 .filter:focus { border-color: var(--accent); }
-.sidebar-footer { border-top: 1px solid var(--border); padding-top: 8px; }
+.sidebar-footer { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.changelog-btn { color: var(--accent); }
+.changelog-btn:hover { background: rgba(167,139,250,.08) !important; }
 
 .icon-btn { background: none; border: 0; color: var(--muted); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
 .icon-btn:hover { color: var(--text); background: var(--panel-2); }
@@ -385,3 +387,53 @@ body:not([data-files-view="server"]) .files-only-server { display: none; }
 .history-search { width: calc(100% - 8px); margin: 4px; }
 .key-state { font-size: 11px; color: var(--ok); }
 .key-state a { color: var(--accent-2); margin-left: 4px; }
+/* ---------------------------------------------------------------- monitor */
+:root { --monitor-h: 220px; }
+#monitor-panel { height: var(--monitor-h); background: var(--panel); border-top: 1px solid var(--border); display: none; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+body.monitor-open #monitor-panel { display: flex; }
+#monitor-resize-handle { height: 6px; cursor: row-resize; flex-shrink: 0; position: relative; touch-action: none; }
+#monitor-resize-handle::after { content: ""; position: absolute; left: 0; right: 0; top: 2px; height: 2px; background: transparent; transition: background .12s; }
+#monitor-resize-handle:hover::after, body.resizing #monitor-resize-handle::after { background: var(--accent); }
+.mon-header { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.mon-title { font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+#monitor-host { flex: 1; font-size: 11px; }
+#monitor-body { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; gap: 0; min-height: 0; font-size: 11.5px; }
+.mon-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.mon-procs-col { flex: 1; }
+.mon-divider { width: 1px; background: var(--border); margin: 0 12px; flex-shrink: 0; }
+.mon-row { display: flex; align-items: center; gap: 8px; }
+.mon-lbl { font-size: 10.5px; font-weight: 600; color: var(--muted); width: 34px; flex-shrink: 0; letter-spacing: .05em; }
+.mon-bar { width: 130px; height: 10px; background: var(--panel-2); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
+.mon-bar.slim { width: 50px; height: 8px; }
+.mon-fill { height: 100%; transition: width .4s, background .4s; }
+.mon-val { color: var(--text); min-width: 100px; font-variant-numeric: tabular-nums; }
+.mon-muted { color: var(--muted); font-size: 10.5px; }
+.mon-net { color: var(--accent-2); min-width: 90px; font-variant-numeric: tabular-nums; }
+.mon-cores-row { display: flex; gap: 3px; margin-left: 42px; flex-wrap: wrap; }
+.mon-core { width: 16px; height: 20px; background: var(--panel-2); border-radius: 2px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+.mon-core-fill { width: 100%; transition: height .4s, background .4s; }
+.mon-procs-head { display: flex; align-items: center; gap: 8px; padding-bottom: 3px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+.mon-proc { display: grid; grid-template-columns: 1fr 42px 56px 58px; gap: 8px; align-items: center; padding: 2px 0; border-bottom: 1px solid rgba(35,40,56,.5); }
+.mon-proc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font: 11.5px var(--mono); }
+.mon-proc-cpu { text-align: right; color: var(--ok); font-variant-numeric: tabular-nums; }
+.mon-proc-cpu.hot { color: var(--danger); }
+.mon-proc-mem { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+#monitor-btn.active { border-color: var(--accent); color: var(--accent); }
+
+/* ---------------------------------------------------------------- changelog dialog */
+#changelog-dialog { width: min(520px, 92vw); }
+#changelog-dialog .changelog-header { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+.changelog-title { font-size: 14px; font-weight: 650; flex: 1; }
+.changelog-ver { font-size: 11px; font-weight: 600; background: rgba(167,139,250,.15); color: var(--accent); border: 1px solid rgba(167,139,250,.3); border-radius: 999px; padding: 1px 8px; }
+.changelog-banner { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: rgba(167,139,250,.1); border-bottom: 1px solid rgba(167,139,250,.2); font-size: 12.5px; }
+.changelog-banner.hidden { display: none; }
+.changelog-banner span { flex: 1; color: var(--accent); }
+.changelog-body { padding: 10px 16px; overflow-y: auto; max-height: 54vh; display: flex; flex-direction: column; gap: 18px; scrollbar-width: thin; scrollbar-color: #2a3042 transparent; }
+.changelog-section { display: flex; flex-direction: column; gap: 10px; }
+.changelog-section-tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.changelog-item { display: flex; gap: 12px; align-items: flex-start; }
+.changelog-icon { font-size: 15px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; flex-shrink: 0; color: var(--accent); font-family: var(--mono); }
+.changelog-item-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.changelog-item-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.changelog-item-desc code { font: 11px var(--mono); background: var(--bg); padding: 1px 4px; border-radius: 3px; color: #c7d2fe; }
+.changelog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border); }

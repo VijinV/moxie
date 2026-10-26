@@ -6,9 +6,11 @@ mod bastion;
 mod chats;
 mod config;
 mod import;
+mod monitor;
 mod pty;
 mod secrets;
 mod sftp;
+mod ssh_conn;
 
 use tauri::Manager;
 
@@ -21,6 +23,7 @@ fn main() {
         .manage(ai::AiState::default())
         .manage(sftp::SftpState::default())
         .manage(bastion::BastionState::default())
+        .manage(monitor::MonitorState::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,
@@ -75,6 +78,8 @@ fn main() {
             bastion::bastion_tunnel_start,
             bastion::bastion_tunnel_stop,
             bastion::bastion_stop_all,
+            monitor::get_stats,
+            monitor::get_remote_stats,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Moxie")

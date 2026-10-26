@@ -34,6 +34,7 @@
 
         <div class="sidebar-footer">
           <button id="open-settings" class="ghost-btn">⚙ Settings</button>
+          <button id="open-changelog" class="ghost-btn changelog-btn">✦ What's New</button>
         </div>
       </aside>
 
@@ -86,6 +87,7 @@
           <button id="explain-btn" class="pill-btn" title="Ask AI about the recent output">💡<span class="label">Explain output</span></button>
           <button id="cmdbar-btn" class="pill-btn" title="Ask: runs commands for you and shows the answer (Ctrl+K)">✦<span class="label">Ask</span> <kbd>Ctrl K</kbd></button>
           <button id="toggle-ai" class="pill-btn" title="Toggle AI panel (Ctrl+Shift+A)">◨<span class="label">AI panel</span></button>
+          <button id="monitor-btn" class="pill-btn" title="Activity monitor">▣<span class="label"> Monitor</span></button>
         </div>
         <div id="find-bar" class="hidden">
           <input id="find-input" placeholder="Find" spellcheck="false" />
@@ -107,6 +109,15 @@
               <kbd>Ctrl Shift A</kbd> AI panel
             </p>
           </div>
+        </div>
+        <div id="monitor-panel">
+          <div id="monitor-resize-handle"></div>
+          <div class="mon-header">
+            <span class="mon-title">▣ Activity Monitor</span>
+            <span id="monitor-host" class="mon-muted"></span>
+            <button class="icon-btn" id="monitor-close" title="Close">×</button>
+          </div>
+          <div id="monitor-body"></div>
         </div>
         <div id="statusbar">
           <span id="status-left"></span>
@@ -392,6 +403,82 @@
           <button value="save" class="primary-btn">Save</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="changelog-dialog">
+      <div class="changelog-header">
+        <span class="changelog-title">✦ What's New in Moxie</span>
+        <span class="changelog-ver">v0.2.0</span>
+        <button class="icon-btn" id="changelog-close" title="Close">×</button>
+      </div>
+      <div id="changelog-update-banner" class="changelog-banner hidden">
+        <span id="changelog-update-text"></span>
+        <button id="changelog-update-btn" class="primary-btn">Update now</button>
+      </div>
+      <div class="changelog-body">
+
+        <div class="changelog-section">
+          <div class="changelog-section-tag">v0.2.0 — Current</div>
+          <div class="changelog-item">
+            <span class="changelog-icon">▣</span>
+            <div>
+              <div class="changelog-item-title">Activity Monitor</div>
+              <div class="changelog-item-desc">Live CPU, memory, network, and process stats in a resizable bottom panel. Automatically shows remote server stats when an SSH session is active.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">⟺</span>
+            <div>
+              <div class="changelog-item-title">Drag-to-resize all panels</div>
+              <div class="changelog-item-desc">Sidebar, SFTP browser, AI assistant, and the new monitor panel are all freely resizable — just drag the edge. Sizes are remembered between sessions.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">⇄</span>
+            <div>
+              <div class="changelog-item-title">Remote SSH monitoring</div>
+              <div class="changelog-item-desc">When you switch to an SSH tab the monitor connects over the same SSH session and reads <code>/proc/stat</code>, <code>free</code>, and <code>ps</code> — no agent needed on the server.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="changelog-section">
+          <div class="changelog-section-tag">v0.1.0 — Initial release</div>
+          <div class="changelog-item">
+            <span class="changelog-icon">›_</span>
+            <div>
+              <div class="changelog-item-title">SSH &amp; local terminals</div>
+              <div class="changelog-item-desc">Full PTY terminal with SSH sessions, key and password auth, port forwarding, Azure Bastion tunnels, and split panes.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">📁</span>
+            <div>
+              <div class="changelog-item-title">SFTP file browser</div>
+              <div class="changelog-item-desc">Browse, upload, download, rename and edit remote files via SFTP — opens automatically alongside each SSH session.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">✦</span>
+            <div>
+              <div class="changelog-item-title">AI assistant</div>
+              <div class="changelog-item-desc">Inline autocomplete, command bar (Ctrl+K), side panel chat, and one-click "Explain output" — powered by Claude, OpenAI, Claude Code CLI or Codex CLI.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">⬆</span>
+            <div>
+              <div class="changelog-item-title">Auto-update</div>
+              <div class="changelog-item-desc">Signed updates delivered over GitHub Releases. Moxie checks in the background and shows a banner when a new version is ready.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="changelog-footer">
+        <button id="changelog-check-updates" class="ghost-btn">Check for updates</button>
+        <button id="changelog-done" class="primary-btn">Done</button>
+      </div>
     </dialog>
 
     <script type="module" src="/src/main.js"></script>
