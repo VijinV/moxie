@@ -10,8 +10,8 @@ Get the latest Windows build from **[Releases](https://github.com/VijinV/term/re
 
 | File | Use it when |
 | --- | --- |
-| [`Moxie_0.1.0_x64-setup.exe`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.1.0_x64-setup.exe) | Normal install (Start menu entry, uninstaller). Recommended |
-| [`Moxie_0.1.0_x64_en-US.msi`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.1.0_x64_en-US.msi) | Managed / IT deployment |
+| [`Moxie_0.1.1_x64-setup.exe`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.1.1_x64-setup.exe) | Normal install (Start menu entry, uninstaller). Recommended |
+| [`Moxie_0.1.1_x64_en-US.msi`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.1.1_x64_en-US.msi) | Managed / IT deployment |
 
 The installers aren't code-signed yet. Windows SmartScreen will warn on first run; choose **More info → Run anyway**.
 Moxie needs the WebView2 runtime, which Windows 10/11 already include.
