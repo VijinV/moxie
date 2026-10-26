@@ -212,36 +212,63 @@ const CMD_SYSTEM = (shell) => `You turn natural-language requests into a single 
 Reply with ONLY the command (one line; chain with && or ; if needed). No explanation, no markdown fences.
 Prefer safe, read-only commands unless the user clearly asks to modify something.`;
 
-let cmdbarCommand = "";
-let cmdbarQuery = "";
-
+// Enter: ask — the assistant runs whatever commands it needs (auto-run; destructive ones still
+// ask in the AI panel) and the answer is shown here. Shift+Enter: just type a command for me.
 export function initCommandBar() {
   const overlay = document.getElementById("cmdbar");
   const input = document.getElementById("cmdbar-input");
   overlay.addEventListener("mousedown", (e) => {
     if (e.target === overlay) closeCommandBar();
   });
-  input.addEventListener("keydown", async (e) => {
+  input.addEventListener("keydown", (e) => {
     if (e.key === "Escape") return closeCommandBar();
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (cmdbarCommand && input.value === cmdbarQuery) {
-      const tab = activeTab();
-      closeCommandBar();
-      sendText(tab, cmdbarCommand, e.ctrlKey);
-      return;
-    }
-    await generateCommand(input.value.trim());
+    const query = input.value.trim();
+    if (!query) return;
+    if (e.shiftKey) insertCommand(query);
+    else askFromBar(query);
+  });
+  document.getElementById("cmdbar-answer").addEventListener("click", codeBlockAction);
+}
+
+function barStatus(text, kind = "") {
+  const el = document.getElementById("cmdbar-status");
+  el.textContent = text;
+  el.className = `cmdbar-hint ${kind}`;
+}
+
+function askFromBar(query) {
+  if (chatBusy()) return barStatus("The assistant is still working on the previous request.", "warn");
+  const answer = document.getElementById("cmdbar-answer");
+  answer.innerHTML = "";
+  answer.classList.add("hidden");
+  barStatus("✦ thinking…", "busy");
+  const steps = [];
+  sendChat(query, true, false, {
+    mode: "auto",
+    onEvent: (ev) => {
+      if (ev.type === "run") {
+        steps.push(ev.cmd);
+        barStatus(`▶ running: ${ev.cmd.length > 70 ? ev.cmd.slice(0, 70) + "…" : ev.cmd}`, "busy");
+      } else if (ev.type === "confirm") {
+        barStatus("⚠ This needs your OK. Approve or skip it in the AI panel.", "warn");
+        document.body.classList.add("ai-open");
+      } else if (ev.type === "answer") {
+        answer.innerHTML = renderMarkdown(ev.text);
+        answer.classList.remove("hidden");
+        barStatus(steps.length ? `Ran ${steps.length} command${steps.length > 1 ? "s" : ""} · full log in the AI panel · Esc to close` : "Esc to close");
+      } else if (ev.type === "note") barStatus(ev.text, "warn");
+      else if (ev.type === "error") barStatus(`Error: ${ev.error}`, "error");
+      else if (ev.type === "stopped") barStatus("Stopped.");
+    },
   });
 }
 
-async function generateCommand(query) {
-  if (!query) return;
+/** The old behaviour: turn the request into one command and type it at the prompt (not run). */
+async function insertCommand(query) {
   const tab = activeTab();
-  const statusEl = document.getElementById("cmdbar-status");
-  document.getElementById("cmdbar-result").classList.add("hidden");
-  statusEl.textContent = "✦ thinking…";
-  cmdbarCommand = "";
+  barStatus("✦ writing command…", "busy");
   try {
     const out = await invoke("ai_oneshot", {
       provider: settings.chat_provider,
@@ -249,13 +276,10 @@ async function generateCommand(query) {
       prompt: `Request: ${query}\n\nRecent terminal output (for context):\n${getContext(tab, 25)}`,
       fast: true,
     });
-    cmdbarCommand = cleanCommand(out);
-    cmdbarQuery = query;
-    document.getElementById("cmdbar-cmd").textContent = cmdbarCommand;
-    document.getElementById("cmdbar-result").classList.remove("hidden");
-    statusEl.textContent = "";
+    closeCommandBar();
+    sendText(tab, cleanCommand(out), false);
   } catch (err) {
-    statusEl.textContent = `Error: ${err}`;
+    barStatus(`Error: ${err}`, "error");
   }
 }
 
@@ -263,9 +287,10 @@ export function openCommandBar() {
   if (!activeTab()) return;
   const input = document.getElementById("cmdbar-input");
   document.getElementById("cmdbar").classList.remove("hidden");
-  document.getElementById("cmdbar-result").classList.add("hidden");
-  document.getElementById("cmdbar-status").textContent = "";
-  cmdbarCommand = "";
+  const answer = document.getElementById("cmdbar-answer");
+  answer.classList.add("hidden");
+  answer.innerHTML = "";
+  barStatus("Enter: ask & get the answer (runs commands for you) · Shift+Enter: just type the command");
   input.value = "";
   input.focus();
 }
@@ -290,7 +315,7 @@ To run a command, end your reply with exactly one fenced block tagged run:
 <command>
 \`\`\`
 It is executed immediately and its output comes back to you inside <command_output>. Run one command per reply, then stop and wait for the output.
-Work step by step until the task is done; when finished, reply with a short summary and no run block.
+Work step by step until the task is done. When finished, reply with no run block: give the answer itself first (the number, the value, the cause of the error, what changed), in a sentence or a short list — don't just list the commands you ran.
 Never start interactive or full-screen programs (vim, nano, top, less, an ssh session without a command); use non-interactive flags such as --no-pager.
 Before anything destructive or irreversible (deleting data, force-pushing, rebooting, dropping tables), ask the user in plain text instead of running it.`;
 
@@ -300,11 +325,14 @@ const DANGEROUS =
 const MAX_STEPS = 25;
 
 function agentMode() {
-  return document.getElementById("agent-mode")?.value ?? "off";
+  return agent.modeOverride ?? document.getElementById("agent-mode")?.value ?? "auto";
 }
 
 // One agent run = one user request and the commands it triggers.
-const agent = { tab: null, steps: 0, aborted: false, running: false, decide: null };
+// `modeOverride` forces a mode for this run (the Ctrl+K bar always auto-runs);
+// `onEvent` lets the bar follow the run: run / confirm / note / answer / error / stopped.
+const agent = { tab: null, steps: 0, aborted: false, running: false, decide: null, modeOverride: null, onEvent: null };
+const emit = (ev) => agent.onEvent?.(ev);
 
 const convo = [];
 let current = null; // { id, text, el, codes }
@@ -335,16 +363,19 @@ export function initChat() {
     setBusy(false);
   });
 
+  // Default: the assistant runs what it needs and answers (destructive commands still ask).
   const mode = document.getElementById("agent-mode");
   try {
-    mode.value = localStorage.getItem("moxie.agentMode") ?? "off";
-  } catch {}
+    mode.value = localStorage.getItem("moxie.agent") ?? "auto";
+  } catch {
+    mode.value = "auto";
+  }
   const applyMode = () => document.body.classList.toggle("agent-auto", mode.value === "auto");
   applyMode();
   mode.addEventListener("change", () => {
     applyMode();
     try {
-      localStorage.setItem("moxie.agentMode", mode.value);
+      localStorage.setItem("moxie.agent", mode.value);
     } catch {}
   });
   document.getElementById("chat-clear").addEventListener("click", () => {
@@ -352,13 +383,7 @@ export function initChat() {
     convo.length = 0;
     document.getElementById("chat-log").innerHTML = "";
   });
-  document.getElementById("chat-log").addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-action]");
-    if (!btn) return;
-    const code = btn.closest(".code").querySelector("code").textContent;
-    if (btn.dataset.action === "copy") navigator.clipboard.writeText(code);
-    else sendText(activeTab(), code.replace(/\n+$/, ""), btn.dataset.action === "run");
-  });
+  document.getElementById("chat-log").addEventListener("click", codeBlockAction);
 
   listen("ai-chunk", (e) => {
     if (!current || e.payload.id !== current.id) return;
@@ -372,11 +397,28 @@ export function initChat() {
   });
 }
 
-/** `fromAgent`: text is command output fed back by the agent loop (shown as a step card instead). */
-export async function sendChat(text, withContext, fromAgent = false) {
+/** Copy / Insert / Run buttons on rendered code blocks. */
+function codeBlockAction(e) {
+  const btn = e.target.closest("[data-action]");
+  if (!btn) return;
+  const code = btn.closest(".code").querySelector("code").textContent;
+  if (btn.dataset.action === "copy") navigator.clipboard.writeText(code);
+  else sendText(activeTab(), code.replace(/\n+$/, ""), btn.dataset.action === "run");
+}
+
+/** True while a reply is streaming or an agent command is running. */
+export const chatBusy = () => !!current || agent.running || !!agent.decide;
+
+/**
+ * `fromAgent`: text is command output fed back by the agent loop (shown as a step card instead).
+ * `opts.mode` / `opts.onEvent`: see `agent` above.
+ */
+export async function sendChat(text, withContext, fromAgent = false, opts = {}) {
   const log = document.getElementById("chat-log");
   log.querySelector(".chat-empty")?.remove();
-  if (!fromAgent) Object.assign(agent, { tab: activeTab(), steps: 0, aborted: false });
+  if (!fromAgent) {
+    Object.assign(agent, { tab: activeTab(), steps: 0, aborted: false, modeOverride: opts.mode ?? null, onEvent: opts.onEvent ?? null });
+  }
   const tab = activeTab();
   const ctx = withContext && tab ? getContext(tab, 80) : "";
   const content = ctx
@@ -431,7 +473,16 @@ function finishChat(error, cancelled = false) {
   scrollChat();
 
   const cmd = !error && !cancelled && agentMode() !== "off" ? extractRunBlock(text) : null;
-  if (cmd) runAgentStep(cmd);
+  if (cmd) return runAgentStep(cmd);
+  if (error) emit({ type: "error", error });
+  else if (cancelled) emit({ type: "stopped" });
+  else emit({ type: "answer", text });
+  endAgentRun();
+}
+
+function endAgentRun() {
+  agent.onEvent = null;
+  agent.modeOverride = null;
 }
 
 // ------------------------------------------------------------------ agent loop
@@ -442,28 +493,32 @@ function extractRunBlock(text) {
 }
 
 async function runAgentStep(cmd) {
-  if (agent.aborted) return;
+  if (agent.aborted) return emit({ type: "stopped" }), endAgentRun();
   const tab = agent.tab && !agent.tab.exited ? agent.tab : activeTab();
-  if (!tab || tab.exited) return agentNote("No open terminal to run the command in.");
-  if (tab.spec.kind === "agent") return agentNote("The active tab is a CLI agent, not a shell — switch to a shell tab.");
-  if (++agent.steps > MAX_STEPS) return agentNote(`Stopped after ${MAX_STEPS} commands. Send a message to continue.`);
+  const stop = (why) => (agentNote(why), endAgentRun());
+  if (!tab || tab.exited) return stop("No open terminal to run the command in.");
+  if (tab.spec.kind === "agent") return stop("The active tab is a CLI agent, not a shell — switch to a shell tab.");
+  if (++agent.steps > MAX_STEPS) return stop(`Stopped after ${MAX_STEPS} commands. Send a message to continue.`);
 
   const dangerous = DANGEROUS.test(cmd);
   if (agentMode() === "ask" || dangerous) {
+    emit({ type: "confirm", cmd, dangerous });
     const ok = await confirmRun(cmd, tab, dangerous);
     if (!ok) {
       if (!agent.aborted) agentNote("Skipped. Tell the assistant what to do instead.");
-      return;
+      else emit({ type: "stopped" });
+      return endAgentRun();
     }
   }
 
+  emit({ type: "run", cmd });
   setBusy(true);
   const card = stepCard(cmd, tab);
   agent.running = true;
   const { output, note } = await runAndCapture(tab, cmd).finally(() => (agent.running = false));
   card.querySelector(".status").textContent = note ? `· ${note}` : "· done";
   card.querySelector("pre").textContent = output || "(no output)";
-  if (agent.aborted) return setBusy(false);
+  if (agent.aborted) return setBusy(false), emit({ type: "stopped" }), endAgentRun();
 
   const clipped = clip(output);
   await sendChat(
@@ -549,6 +604,7 @@ function agentNote(text) {
   n.textContent = text;
   document.getElementById("chat-log").appendChild(n);
   scrollChat();
+  emit({ type: "note", text });
 }
 
 function setBusy(busy) {

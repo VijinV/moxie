@@ -59,7 +59,7 @@
           <div class="spacer"></div>
           <button id="files-btn" class="pill-btn" title="SFTP file browser (Ctrl+Shift+F)">📁 Files</button>
           <button id="explain-btn" class="pill-btn" title="Ask AI about the recent output">✦ Explain output</button>
-          <button id="cmdbar-btn" class="pill-btn" title="Natural language → command (Ctrl+K)">✦ Command <kbd>Ctrl K</kbd></button>
+          <button id="cmdbar-btn" class="pill-btn" title="Ask: runs commands for you and shows the answer (Ctrl+K)">✦ Ask <kbd>Ctrl K</kbd></button>
           <button id="toggle-ai" class="pill-btn" title="Toggle AI panel (Ctrl+Shift+A)">✦ AI panel</button>
         </div>
         <div id="terminals">
@@ -125,12 +125,9 @@
       <div class="cmdbar-box">
         <div class="cmdbar-row">
           <span class="spark">✦</span>
-          <input id="cmdbar-input" placeholder="Describe what you want to do… e.g. find the 10 largest files here" />
+          <input id="cmdbar-input" placeholder="Ask anything… e.g. how much disk space is free? which process uses port 3000?" />
         </div>
-        <div id="cmdbar-result" class="hidden">
-          <pre id="cmdbar-cmd"></pre>
-          <div class="cmdbar-hint"><kbd>Enter</kbd> insert · <kbd>Ctrl Enter</kbd> run · <kbd>Esc</kbd> close</div>
-        </div>
+        <div id="cmdbar-answer" class="msg assistant hidden"></div>
         <div id="cmdbar-status" class="cmdbar-hint"></div>
       </div>
     </div>

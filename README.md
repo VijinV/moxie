@@ -25,8 +25,8 @@ Moxie needs the WebView2 runtime, which Windows 10/11 already include.
 | Azure Bastion | Session type for VMs reachable only through Azure Bastion: enter the bastion name, resource group and VM resource ID. Moxie opens `az network bastion tunnel` on a free local port and connects the terminal and SFTP through it. Tabs from the same session share one tunnel, which closes with the last tab |
 | SFTP browser | Opens next to every SSH tab (Ctrl+Shift+F). Browse, open files with their default app, upload/download files and whole folders (buttons or drag & drop from Explorer) with progress, rename, new folder, recursive delete, "cd here" in the terminal. Uses the same `known_hosts` trust and key / password / keyboard-interactive login |
 | AI chat panel | Streaming chat that attaches recent terminal output. Code blocks in replies get **Copy / Insert / Run** buttons. **Explain output** diagnoses the last error |
-| Agent mode | Set **Agent** in the AI panel to *Ask before running* or *Auto-run*: the AI runs commands in the active terminal, reads the output and keeps going until the task is done (up to 25 commands; Stop button). Destructive commands (`rm -rf`, `git push --force`, `DROP TABLE`, `Remove-Item -Recurse`, reboot, …) always ask, even in Auto-run |
-| Command bar | **Ctrl+K**: describe what you want in plain language and get a shell command |
+| Agent mode | On by default (**Auto-run**; switch to *Ask before running* or *Off* in the AI panel): the AI runs commands in the active terminal, reads the output and keeps going until the task is done (up to 25 commands; Stop button). Destructive commands (`rm -rf`, `git push --force`, `DROP TABLE`, `Remove-Item -Recurse`, reboot, …) always ask, even in Auto-run |
+| Ask bar | **Ctrl+K**: ask a question in plain language. Moxie runs the commands it needs and shows the answer in the bar. **Shift+Enter** instead just types a command at the prompt |
 | Autocomplete | Grey suggestion text at the cursor, from your shell history (PSReadLine / bash / zsh) and from AI |
 | CLI agent tabs | Open **Claude Code** (`claude`) or **Codex** (`codex`) as full interactive tabs from the sidebar |
 
@@ -55,7 +55,7 @@ Bastion *shareable links* (`https://bst-….bastion.azure.com/…`) only work in
 
 | Keys | Action |
 | --- | --- |
-| Ctrl+K | Command bar (Enter inserts the command, Ctrl+Enter runs it) |
+| Ctrl+K | Ask bar (Enter: run commands and show the answer · Shift+Enter: just type the command) |
 | → or End | Accept the autocomplete suggestion |
 | Ctrl+Space | Ask the AI to complete the line (on an empty line: suggest the next command) |
 | Esc | Dismiss the suggestion |
