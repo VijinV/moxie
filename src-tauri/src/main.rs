@@ -4,6 +4,7 @@ mod ai;
 mod bastion;
 mod chats;
 mod config;
+mod import;
 mod pty;
 mod secrets;
 mod sftp;
@@ -55,6 +56,9 @@ fn main() {
             sftp::sftp_edit,
             sftp::reveal_local,
             sftp::open_url,
+            import::import_sessions,
+            import::launch_rdp,
+            import::launch_vnc,
             chats::chats_list,
             chats::chat_load,
             chats::chat_save,

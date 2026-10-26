@@ -48,6 +48,9 @@ if (-not $global:__moxieSI) {
 
 // Must stay valid in both bash and zsh, and be safe to eval twice.
 const POSIX_SNIPPET = String.raw`
+# Typed over SSH: wipe the echoed line (and its prompt) from the screen at the source, so no
+# repaint by the terminal layer (ConPTY on Windows keeps its own copy) can bring it back.
+[ -n "$__n" ] && printf '\033[%sA\r\033[J' "$__n"
 if [ -z "$__MOXIE_SI" ]; then
 __MOXIE_SI=1
 if [ -n "$ZSH_VERSION" ]; then
@@ -95,7 +98,12 @@ const utf8Base64 = (s) => btoa(unescape(encodeURIComponent(s)));
 /** Extra args that load the integration script into a PowerShell started with -NoExit. */
 export const powershellIntegrationArgs = () => ["-EncodedCommand", utf16Base64(POWERSHELL_SCRIPT)];
 
-const compactSnippet = () => POSIX_SNIPPET.split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
+// Comments and indentation stripped: on SSH every character is typed and echoed back.
+const compactSnippet = () =>
+  POSIX_SNIPPET.split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"))
+    .join("\n");
 
 /**
  * Local bash (Git Bash, WSL): hand the hook over in the environment so nothing is typed. bash runs
@@ -109,9 +117,10 @@ export function bashIntegrationEnv(wsl) {
 
 // Leading space: kept out of history where HISTCONTROL ignores it (the snippet also deletes it).
 // Kept short: the server echoes every character before running it.
-const injectionLine = () => {
+// `rows`: how many screen rows prompt + echoed line take up, for the hook to erase.
+const injectionLine = (rows) => {
   const b64 = utf8Base64(compactSnippet());
-  return ` __m=${b64};eval "$( (echo $__m|base64 -d)2>/dev/null||echo $__m|base64 -D)";unset __m\r`;
+  return ` __m=${b64};__n=${rows};eval "$( (echo $__m|base64 -d)2>/dev/null||echo $__m|base64 -D)";unset __m __n\r`;
 };
 
 // ------------------------------------------------------------------ per-tab state
@@ -307,7 +316,11 @@ function maybeInject(tab) {
   inj.buffer = "";
   inj.at = Date.now();
   // Small chunks: Git Bash (MSYS on ConPTY) drops input written in one large burst.
-  const line = injectionLine();
+  // Rows the echo will occupy, counted from the prompt's own row (2-digit estimate for __n).
+  const cols = tab.term.cols;
+  const promptX = tab.term.buffer.active.cursorX;
+  const rows = Math.ceil((promptX + injectionLine(10).length - 1) / cols);
+  const line = injectionLine(rows);
   for (let i = 0, k = 0; i < line.length; i += 128, k++) {
     setTimeout(() => hooks.write(tab, line.slice(i, i + 128)), k * 15);
   }
@@ -317,7 +330,7 @@ function maybeInject(tab) {
     const held = inj.buffer;
     finishInjection(tab);
     tab.term.write(held);
-  }, 10000);
+  }, 20000);
 }
 
 function finishInjection(tab) {

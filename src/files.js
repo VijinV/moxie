@@ -147,6 +147,7 @@ async function connect(tab, trust = null) {
       secretKey: s.secretKey,
       trust,
       knownHostAlias: s.hostKeyAlias ?? null,
+      jump: s.jump ?? null,
     });
     f.home = home;
     f.status = "ready";
@@ -154,11 +155,13 @@ async function connect(tab, trust = null) {
   } catch (err) {
     const msg = String(err);
     if (msg.startsWith("HOSTKEY_UNKNOWN:")) {
-      Object.assign(f, { status: "hostkey", fingerprint: msg.slice(16) });
+      // "HOSTKEY_UNKNOWN:<fingerprint>;<which host>" — the jump host and the server are checked separately.
+      const [fp, which] = msg.slice(16).split(";");
+      Object.assign(f, { status: "hostkey", fingerprint: fp, keyHost: which?.startsWith("jump host") ? which : null });
     } else if (msg.startsWith("HOSTKEY_CHANGED:")) {
       Object.assign(f, {
         status: "error",
-        error: `WARNING: the host key for ${s.label ?? s.host} has CHANGED (${msg.slice(16)}). This could be a man-in-the-middle attack. If the server was reinstalled, remove its old entry from ~/.ssh/known_hosts.`,
+        error: `WARNING: the host key for ${msg.split(";")[1]?.startsWith("jump host") ? msg.split(";")[1] : s.label ?? s.host} has CHANGED (${msg.slice(16).split(";")[0]}). This could be a man-in-the-middle attack. If the server was reinstalled, remove its old entry from ~/.ssh/known_hosts.`,
       });
     } else if (msg.startsWith("AUTH_")) {
       const retry = await promptPassword(
@@ -386,7 +389,7 @@ function render() {
   if (f.status === "hostkey") {
     body.innerHTML = `<div class="files-msg">First connection to <b></b>. Verify its host key fingerprint:<code></code>
       <button class="primary-btn">Trust &amp; connect</button></div>`;
-    body.querySelector("b").textContent = tab.spec.ssh.label ?? tab.spec.ssh.host;
+    body.querySelector("b").textContent = f.keyHost ?? tab.spec.ssh.label ?? tab.spec.ssh.host;
     body.querySelector("code").textContent = f.fingerprint;
     body.querySelector("button").addEventListener("click", () => connect(tab, f.fingerprint));
     return;

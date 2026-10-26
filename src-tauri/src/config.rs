@@ -36,6 +36,8 @@ pub struct Settings {
     pub cursor_style: String,
     /// Reopen the previous tabs, splits and sessions on start.
     pub restore_workspace: bool,
+    /// VNC viewer executable; empty = auto-detect.
+    pub vnc_viewer: String,
 }
 
 impl Default for Settings {
@@ -63,6 +65,7 @@ impl Default for Settings {
             line_height: 1.0,
             cursor_style: "block".into(),
             restore_workspace: true,
+            vnc_viewer: String::new(),
         }
     }
 }

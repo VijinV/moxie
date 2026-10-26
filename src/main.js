@@ -151,39 +151,83 @@ function renderShells() {
   }
 }
 
+const SESSION_ICON = { ssh: "⇄", bastion: "☁", rdp: "🖥", vnc: "🖵" };
+const DEFAULT_PORT = { ssh: 22, bastion: 22, rdp: 3389, vnc: 5900 };
+
+/** Sidebar sessions, grouped by folder (folders collapse; state remembered per viewer). */
 function renderSessions() {
   const ul = $("ssh-list");
   const q = $("session-filter").value.toLowerCase();
   ul.innerHTML = "";
-  const list = sessions.filter((s) => `${s.name} ${s.host} ${s.user} ${s.vm ?? ""}`.toLowerCase().includes(q));
+  const list = sessions.filter((s) => `${s.name} ${s.host} ${s.user} ${s.vm ?? ""} ${s.folder ?? ""}`.toLowerCase().includes(q));
   if (!list.length) {
-    ul.innerHTML = `<li class="muted small">${sessions.length ? "No matches" : "No saved sessions yet"}</li>`;
+    ul.innerHTML = `<li class="muted small">${sessions.length ? "No matches" : "No saved sessions yet · ⇩ to import"}</li>`;
     return;
   }
+  let collapsed = {};
+  try {
+    collapsed = JSON.parse(localStorage.getItem("moxie.folders") ?? "{}");
+  } catch {}
+  const folders = new Map();
   for (const s of list) {
-    const bastion = s.type === "bastion";
-    const li = item(sessionTitle(s), bastion ? "☁" : "⇄", () => connectSession(s));
-    li.title = bastion
-      ? `${s.user ? s.user + "@" : ""}${vmName(s.vm)} via Azure Bastion ${s.bastion}`
-      : `${s.user ? s.user + "@" : ""}${s.host}:${s.port || 22}`;
-    const actions = document.createElement("span");
-    actions.className = "item-actions";
-    actions.innerHTML = `${s.forwards?.trim() ? '<button title="Start port forwards only (no shell)">🔌</button>' : ""}<button title="Edit">✎</button><button title="Delete">×</button>`;
-    const buttons = [...actions.querySelectorAll("button")];
-    if (s.forwards?.trim()) buttons.shift().addEventListener("click", (e) => (e.stopPropagation(), connectSession(s, { tunnelsOnly: true })));
-    const [edit, del] = buttons;
-    edit.addEventListener("click", (e) => (e.stopPropagation(), openSshDialog(s)));
-    del.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      if (!confirm(`Delete session "${s.name || s.host}"?`)) return;
-      sessions = sessions.filter((x) => x.id !== s.id);
-      await invoke("save_sessions", { sessions });
-      invoke("secret_delete", { key: secretKeyFor(s) });
-      renderSessions();
-    });
-    li.appendChild(actions);
-    ul.appendChild(li);
+    const f = s.folder?.trim() || "";
+    if (!folders.has(f)) folders.set(f, []);
+    folders.get(f).push(s);
   }
+  const names = [...folders.keys()].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b));
+  for (const name of names) {
+    const items = folders.get(name).sort((a, b) => sessionTitle(a).localeCompare(sessionTitle(b)));
+    const nested = name !== "";
+    if (nested) {
+      const head = document.createElement("li");
+      head.className = "folder-row" + (collapsed[name] && !q ? " collapsed" : "");
+      head.innerHTML = `<span class="item-icon">▾</span><span class="item-label"></span><span class="folder-count">${items.length}</span>`;
+      head.querySelector(".item-label").textContent = name;
+      head.addEventListener("click", () => {
+        collapsed[name] = !collapsed[name];
+        try {
+          localStorage.setItem("moxie.folders", JSON.stringify(collapsed));
+        } catch {}
+        renderSessions();
+      });
+      ul.appendChild(head);
+      if (collapsed[name] && !q) continue;
+    }
+    for (const s of items) {
+      const li = sessionItem(s);
+      if (nested) li.classList.add("in-folder");
+      ul.appendChild(li);
+    }
+  }
+  $("folder-list").innerHTML = [...new Set(sessions.map((s) => s.folder).filter(Boolean))]
+    .map((f) => `<option value="${f.replace(/"/g, "&quot;")}">`)
+    .join("");
+}
+
+function sessionItem(s) {
+  const type = s.type ?? "ssh";
+  const li = item(sessionTitle(s), SESSION_ICON[type] ?? "⇄", () => connectSession(s));
+  li.title =
+    type === "bastion"
+      ? `${s.user ? s.user + "@" : ""}${vmName(s.vm)} via Azure Bastion ${s.bastion}`
+      : `${{ rdp: "RDP ", vnc: "VNC " }[type] ?? ""}${s.user ? s.user + "@" : ""}${s.host}:${s.port || DEFAULT_PORT[type]}${s.jump ? " via " + s.jump : ""}`;
+  const actions = document.createElement("span");
+  actions.className = "item-actions";
+  actions.innerHTML = `${s.forwards?.trim() ? '<button title="Start port forwards only (no shell)">🔌</button>' : ""}<button title="Edit">✎</button><button title="Delete">×</button>`;
+  const buttons = [...actions.querySelectorAll("button")];
+  if (s.forwards?.trim()) buttons.shift().addEventListener("click", (e) => (e.stopPropagation(), connectSession(s, { tunnelsOnly: true })));
+  const [edit, del] = buttons;
+  edit.addEventListener("click", (e) => (e.stopPropagation(), openSshDialog(s)));
+  del.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (!confirm(`Delete session "${sessionTitle(s)}"?`)) return;
+    sessions = sessions.filter((x) => x.id !== s.id);
+    await invoke("save_sessions", { sessions });
+    invoke("secret_delete", { key: secretKeyFor(s) });
+    renderSessions();
+  });
+  li.appendChild(actions);
+  return li;
 }
 
 async function renderAgents() {
@@ -221,8 +265,95 @@ function item(label, icon, onClick) {
 /** opts: { splitOf, dir } to open in a split pane; { tunnelsOnly } for port forwards without a shell. */
 function connectSession(s, opts = {}) {
   if (s.type === "bastion") connectBastion(s, opts);
+  else if (s.type === "rdp") launchDesktop("launch_rdp", { name: sessionTitle(s), host: s.host, port: Number(s.port) || 3389, user: s.user ?? "" });
+  else if (s.type === "vnc") launchDesktop("launch_vnc", { host: s.host, port: Number(s.port) || 5900 });
   else connectSsh(s, opts);
 }
+
+async function launchDesktop(cmd, args) {
+  try {
+    await invoke(cmd, args);
+    setStatus(`Opening ${cmd === "launch_rdp" ? "Remote Desktop" : "VNC viewer"} for ${args.host}…`);
+  } catch (err) {
+    alert(String(err));
+  }
+}
+
+// ------------------------------------------------------------------ session import
+
+let importRows = [];
+
+function openImport() {
+  importRows = [];
+  $("import-list").innerHTML = '<p class="hint">Choose where to import from. Nothing is added until you click Import.</p>';
+  $("import-go").disabled = true;
+  $("import-dialog").showModal();
+}
+
+async function loadImport(src) {
+  let source = src;
+  let path = null;
+  if (src === "mobaxterm-file") {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    path = await open({ title: "MobaXterm.ini or exported .mxtsessions", filters: [{ name: "MobaXterm", extensions: ["ini", "mxtsessions"] }] });
+    if (!path) return;
+    source = "mobaxterm";
+  }
+  $("import-list").innerHTML = '<p class="hint">Reading…</p>';
+  try {
+    const found = await invoke("import_sessions", { source, path });
+    const key = (s) => `${s.type}|${s.user}@${s.host}:${s.port}`;
+    const existing = new Set(
+      sessions.map((s) => key({ type: s.type ?? "ssh", user: s.user ?? "", host: s.host, port: Number(s.port) || DEFAULT_PORT[s.type ?? "ssh"] })),
+    );
+    importRows = found.map((s) => ({ ...s, dup: existing.has(key(s)) }));
+  } catch (err) {
+    $("import-list").innerHTML = `<p class="hint error">${String(err).replace(/</g, "&lt;")}</p>`;
+    return;
+  }
+  if (!importRows.length) {
+    $("import-list").innerHTML = '<p class="hint">No sessions found there.</p>';
+    return;
+  }
+  $("import-list").innerHTML = importRows
+    .map(
+      (s, i) => `<label class="import-row${s.dup ? " dup" : ""}"><input type="checkbox" data-i="${i}" ${s.dup ? "" : "checked"} />
+        <span class="ir-icon">${SESSION_ICON[s.type]}</span><span class="ir-name"></span><span class="ir-target"></span><span class="ir-folder"></span>
+        ${s.dup ? '<span class="ir-note">already saved</span>' : s.note ? '<span class="ir-note warn"></span>' : ""}</label>`,
+    )
+    .join("");
+  [...$("import-list").querySelectorAll(".import-row")].forEach((row, i) => {
+    const s = importRows[i];
+    row.querySelector(".ir-name").textContent = s.name;
+    row.querySelector(".ir-target").textContent = `${s.user ? s.user + "@" : ""}${s.host}:${s.port}${s.jump ? " via " + s.jump : ""}`;
+    row.querySelector(".ir-folder").textContent = s.folder;
+    const note = row.querySelector(".ir-note.warn");
+    if (note) {
+      note.textContent = "⚠ key not imported";
+      note.title = s.note;
+    }
+  });
+  $("import-go").disabled = false;
+}
+
+$("import-sessions").addEventListener("click", openImport);
+document.querySelectorAll("#import-dialog [data-src]").forEach((b) => b.addEventListener("click", () => loadImport(b.dataset.src)));
+$("import-all").addEventListener("change", (e) =>
+  $("import-list").querySelectorAll("input[data-i]").forEach((c) => (c.checked = e.target.checked)),
+);
+$("import-dialog").addEventListener("close", async () => {
+  if ($("import-dialog").returnValue !== "import") return;
+  const picked = [...$("import-list").querySelectorAll("input[data-i]:checked")].map((c) => importRows[Number(c.dataset.i)]);
+  for (const s of picked) {
+    sessions.push({
+      id: crypto.randomUUID(), type: s.type, name: s.name, host: s.host, port: s.port, user: s.user,
+      key: s.key, jump: s.jump, folder: s.folder, extra: "", forwards: "", integrate: true,
+    });
+  }
+  await invoke("save_sessions", { sessions });
+  renderSessions();
+  setStatus(`Imported ${picked.length} session${picked.length === 1 ? "" : "s"}`);
+});
 
 function connectSsh(s, opts = {}) {
   const problem = hostProblem(s.host);
@@ -458,8 +589,13 @@ const VM_ID = /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/[^/]+\
 function validateSshForm() {
   const f = $("ssh-form").elements;
   const bastion = f.type.value === "bastion";
-  for (const el of document.querySelectorAll("#ssh-form [data-for]")) el.hidden = el.dataset.for !== f.type.value;
+  for (const el of document.querySelectorAll("#ssh-form [data-for]")) el.hidden = !el.dataset.for.split(" ").includes(f.type.value);
+  // Switching type: move the port to that type's default unless the user changed it.
+  const prev = f.type.dataset.prev ?? "ssh";
+  if (prev !== f.type.value && Number(f.port.value) === DEFAULT_PORT[prev]) f.port.value = DEFAULT_PORT[f.type.value];
+  f.type.dataset.prev = f.type.value;
   f.host.required = !bastion;
+  f.host.setCustomValidity("");
   f.host.setCustomValidity(bastion ? "" : hostProblem(f.host.value));
   for (const k of ["bastion", "rg", "vm"]) f[k].required = bastion;
   const vm = f.vm.value.trim();
@@ -477,9 +613,10 @@ function openSshDialog(session = null) {
   const form = $("ssh-form");
   form.reset();
   const s = session ?? { port: 22 };
-  for (const k of ["id", "name", "host", "port", "user", "key", "extra", "bastion", "rg", "vm", "sub", "forwards"]) form.elements[k].value = s[k] ?? "";
+  for (const k of ["id", "name", "host", "port", "user", "key", "extra", "bastion", "rg", "vm", "sub", "forwards", "folder", "jump"]) form.elements[k].value = s[k] ?? "";
   form.elements.integrate.checked = s.integrate !== false;
   form.elements.type.value = s.type ?? "ssh";
+  form.elements.type.dataset.prev = form.elements.type.value;
   if (!s.port) form.elements.port.value = 22;
   validateSshForm();
   form.elements.password.placeholder = "optional";
@@ -496,13 +633,15 @@ $("ssh-dialog").addEventListener("close", async () => {
   if (dlg.returnValue !== "save" && dlg.returnValue !== "connect") return;
   const f = $("ssh-form").elements;
   const type = f.type.value;
-  if (type === "ssh" ? !f.host.value.trim() : !f.vm.value.trim()) return;
+  if (type === "bastion" ? !f.vm.value.trim() : !f.host.value.trim()) return;
   const s = {
     id: f.id.value || crypto.randomUUID(),
     type,
     name: f.name.value.trim(),
-    host: type === "ssh" ? f.host.value.trim() : "",
-    port: Number(f.port.value) || 22,
+    host: type === "bastion" ? "" : f.host.value.trim(),
+    port: Number(f.port.value) || DEFAULT_PORT[type],
+    folder: f.folder.value.trim(),
+    jump: type === "ssh" ? f.jump.value.trim() : "",
     user: f.user.value.trim(),
     key: f.key.value.trim(),
     extra: f.extra.value.trim(),

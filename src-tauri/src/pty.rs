@@ -72,6 +72,8 @@ pub fn pty_spawn(
     cols: u16,
     rows: u16,
     secret_key: Option<String>,
+    // How many password prompts to answer (2 through a jump host: jump + server).
+    secret_uses: Option<u32>,
     env: Option<HashMap<String, String>>,
 ) -> Result<u32, String> {
     let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
@@ -116,6 +118,7 @@ pub fn pty_spawn(
         // MobaXterm-style auto-login: answer the first "password:" prompt with the saved
         // password. Only once, so a wrong password falls back to manual entry.
         let mut autofill = secret_key.as_deref().and_then(crate::secrets::get);
+        let mut uses_left = secret_uses.unwrap_or(1).clamp(1, 3);
         let started = std::time::Instant::now();
         let mut tail = String::new();
         loop {
@@ -140,10 +143,15 @@ pub fn pty_spawn(
                         }
                         let t = tail.trim_end().to_lowercase();
                         if t.ends_with("password:") {
-                            let pw = autofill.take().unwrap();
+                            let pw = autofill.clone().unwrap();
                             if let Some(s) = autofill_sessions.lock().unwrap().get_mut(&id) {
                                 let _ = s.writer.write_all(format!("{pw}\r").as_bytes());
                                 let _ = s.writer.flush();
+                            }
+                            tail.clear(); // the next prompt must be a new one
+                            uses_left -= 1;
+                            if uses_left == 0 {
+                                autofill = None;
                             }
                         } else if started.elapsed().as_secs() > 60 {
                             autofill = None;

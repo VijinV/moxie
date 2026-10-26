@@ -174,6 +174,7 @@ async function spawn(pane) {
       cols: pane.term.cols,
       rows: pane.term.rows,
       secretKey: pane.spec.secretKey ?? null,
+      secretUses: pane.spec.ssh?.jump ? 2 : 1,
       env: pane.spec.env ?? null,
     });
     pane.exited = false;

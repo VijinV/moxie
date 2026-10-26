@@ -16,7 +16,7 @@
         </section>
 
         <section class="grow">
-          <h3>SSH sessions <button id="add-ssh" class="icon-btn" title="New SSH session">+</button></h3>
+          <h3>Sessions <span><button id="import-sessions" class="icon-btn" title="Import from ~/.ssh/config, MobaXterm or PuTTY">⇩</button><button id="add-ssh" class="icon-btn" title="New session">+</button></span></h3>
           <input id="session-filter" class="filter" placeholder="Filter sessions…" />
           <ul id="ssh-list" class="list"></ul>
         </section>
@@ -161,18 +161,22 @@
 
     <dialog id="ssh-dialog">
       <form method="dialog" id="ssh-form">
-        <h2>SSH session</h2>
+        <h2>Session</h2>
         <input type="hidden" name="id" />
         <div class="row">
           <label class="grow">Name <input name="name" placeholder="prod-web-1" /></label>
+          <label class="grow">Folder <input name="folder" list="folder-list" placeholder="none" /></label>
           <label>Connection
             <select name="type">
               <option value="ssh">SSH</option>
               <option value="bastion">Azure Bastion</option>
+              <option value="rdp">Remote Desktop (RDP)</option>
+              <option value="vnc">VNC</option>
             </select>
           </label>
         </div>
-        <div class="row" data-for="ssh">
+        <datalist id="folder-list"></datalist>
+        <div class="row" data-for="ssh rdp vnc">
           <label class="grow">Host <input name="host" placeholder="10.0.0.5 or example.com" /></label>
           <label class="port">Port <input name="port" type="number" value="22" /></label>
         </div>
@@ -190,18 +194,21 @@
             Properties in the Azure portal.
           </p>
         </fieldset>
-        <label>Username <input name="user" placeholder="root" /></label>
-        <div class="row">
+        <label data-for="ssh bastion rdp">Username <input name="user" placeholder="root" /></label>
+        <div class="row" data-for="ssh bastion">
           <label class="grow">Password <input name="password" type="password" autocomplete="off" placeholder="optional" /></label>
           <label class="check remember"><input type="checkbox" name="remember" checked /> Remember</label>
         </div>
-        <label>Private key (optional) <input name="key" placeholder="C:\Users\you\.ssh\id_ed25519 — defaults to ~/.ssh/id_*" /></label>
-        <label>Port forwarding (optional, one per line)
+        <label data-for="ssh">Jump host (optional) <input name="jump" placeholder="user@bastion.example.com:22 — terminal and SFTP go through it" /></label>
+        <label data-for="ssh bastion">Private key (optional) <input name="key" placeholder="C:\Users\you\.ssh\id_ed25519 — defaults to ~/.ssh/id_*" /></label>
+        <label data-for="ssh bastion">Port forwarding (optional, one per line)
           <textarea name="forwards" rows="2" spellcheck="false" placeholder="L 5432:localhost:5432   (your :5432 → server's localhost:5432)&#10;R 8080:localhost:3000   (server :8080 → your :3000) · D 1080 (SOCKS proxy)"></textarea>
         </label>
-        <label>Extra ssh args (optional) <input name="extra" placeholder="-o ServerAliveInterval=30" /></label>
-        <label class="check"><input type="checkbox" name="integrate" checked /> Shell integration on the server (command blocks, exit codes, AI knows the OS). Turn off for routers / non-bash shells.</label>
-        <p class="hint">
+        <label data-for="ssh bastion">Extra ssh args (optional) <input name="extra" placeholder="-o ServerAliveInterval=30" /></label>
+        <label class="check" data-for="ssh bastion"><input type="checkbox" name="integrate" checked /> Shell integration on the server (command blocks, exit codes, AI knows the OS). Turn off for routers / non-bash shells.</label>
+        <p class="hint" data-for="rdp">Opens Windows Remote Desktop (mstsc), which asks for the password.</p>
+        <p class="hint" data-for="vnc">Opens your VNC viewer (TigerVNC, RealVNC, TightVNC or UltraVNC; set a custom path in Settings).</p>
+        <p class="hint" data-for="ssh bastion">
           The terminal uses your system OpenSSH client (so ~/.ssh/config, agents and known_hosts work) and
           types the saved password at the login prompt. Remembered passwords are kept in the OS credential
           store (Windows Credential Manager), never in Moxie's config files.
@@ -210,6 +217,24 @@
           <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>
           <button value="save" class="ghost-btn">Save</button>
           <button value="connect" class="primary-btn">Save &amp; connect</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="import-dialog" class="wide">
+      <form method="dialog" id="import-form">
+        <h2>Import sessions</h2>
+        <div class="import-sources">
+          <button type="button" class="ghost-btn" data-src="ssh-config">~/.ssh/config</button>
+          <button type="button" class="ghost-btn" data-src="mobaxterm">MobaXterm</button>
+          <button type="button" class="ghost-btn" data-src="mobaxterm-file">MobaXterm file…</button>
+          <button type="button" class="ghost-btn" data-src="putty">PuTTY</button>
+        </div>
+        <div id="import-list" class="import-list"><p class="hint">Choose where to import from. Nothing is added until you click Import.</p></div>
+        <div class="dialog-actions">
+          <label class="check" style="margin-right:auto"><input type="checkbox" id="import-all" checked /> Select all</label>
+          <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>
+          <button value="import" id="import-go" class="primary-btn" disabled>Import</button>
         </div>
       </form>
     </dialog>

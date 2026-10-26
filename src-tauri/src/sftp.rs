@@ -23,6 +23,42 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 struct Conn {
     sftp: SftpSession,
     handle: client::Handle<Client>,
+    /// The jump host connection the session is tunneled through (kept alive with it).
+    _jump: Option<client::Handle<Client>>,
+}
+
+/// Maps a connect result to the UI's error codes. Host-key codes carry "fingerprint;which host".
+fn finish_connect(
+    result: Result<Result<client::Handle<Client>, russh::Error>, tokio::time::error::Elapsed>,
+    issue: &Mutex<HostKeyIssue>,
+    label: &str,
+) -> Result<client::Handle<Client>, String> {
+    match result {
+        Err(_) => Err(format!("timed out connecting to {label}")),
+        Ok(Ok(h)) => Ok(h),
+        Ok(Err(e)) => Err(match std::mem::take(&mut *issue.lock().unwrap()) {
+            HostKeyIssue::Unknown(fp) => format!("HOSTKEY_UNKNOWN:{fp};{label}"),
+            HostKeyIssue::Changed(fp) => format!("HOSTKEY_CHANGED:{fp};{label}"),
+            HostKeyIssue::None => format!("could not connect to {label}: {e}"),
+        }),
+    }
+}
+
+/// "user@host:port", "host:port" or "host" (only the first hop of a comma-separated chain).
+fn parse_jump(spec: &str) -> Result<(Option<String>, String, u16), String> {
+    let first = spec.trim();
+    if first.contains(',') {
+        return Err("SFTP supports a single jump host (the terminal supports chains)".into());
+    }
+    let (user, rest) = match first.rsplit_once('@') {
+        Some((u, r)) => (Some(u.to_string()), r),
+        None => (None, first),
+    };
+    let (host, port) = match rest.rsplit_once(':') {
+        Some((h, p)) if !h.contains(':') => (h.to_string(), p.parse().map_err(|_| format!("bad jump host port in {spec}"))?),
+        _ => (rest.to_string(), 22),
+    };
+    Ok((user, host, port))
 }
 
 #[derive(Default)]
@@ -141,6 +177,7 @@ pub async fn sftp_connect(
     secret_key: Option<String>,
     trust: Option<String>,
     known_host_alias: Option<String>,
+    jump: Option<String>,
 ) -> Result<String, String> {
     let issue = Arc::new(Mutex::new(HostKeyIssue::None));
     // Tunneled connections (Azure Bastion) land on 127.0.0.1:<random port>; check the host key
@@ -149,27 +186,41 @@ pub async fn sftp_connect(
         Some(alias) => (alias, 22),
         None => (host.clone(), port),
     };
-    let handler = Client { host: kh_host, port: kh_port, trust, issue: issue.clone() };
+    let handler = Client { host: kh_host.clone(), port: kh_port, trust: trust.clone(), issue: issue.clone() };
     let config = Arc::new(client::Config {
         keepalive_interval: Some(Duration::from_secs(30)),
         ..Default::default()
     });
-
-    let connect = client::connect(config, (host.as_str(), port), handler);
-    let mut handle = match tokio::time::timeout(Duration::from_secs(20), connect).await {
-        Err(_) => return Err(format!("timed out connecting to {host}:{port}")),
-        Ok(Ok(h)) => h,
-        Ok(Err(e)) => {
-            return Err(match std::mem::take(&mut *issue.lock().unwrap()) {
-                HostKeyIssue::Unknown(fp) => format!("HOSTKEY_UNKNOWN:{fp}"),
-                HostKeyIssue::Changed(fp) => format!("HOSTKEY_CHANGED:{fp}"),
-                HostKeyIssue::None => format!("could not connect to {host}:{port}: {e}"),
-            })
-        }
-    };
-
     let user = if user.trim().is_empty() { std::env::var("USERNAME").unwrap_or_else(|_| "root".into()) } else { user };
     let password = secret_key.as_deref().and_then(crate::secrets::get);
+
+    // Through a jump host (ProxyJump): log in there, then tunnel the real connection through it.
+    let mut jump_handle = None;
+    let mut handle = if let Some(spec) = jump.filter(|j| !j.trim().is_empty()) {
+        let (juser, jhost, jport) = parse_jump(&spec)?;
+        let jissue = Arc::new(Mutex::new(HostKeyIssue::None));
+        let jhandler = Client { host: jhost.clone(), port: jport, trust: trust.clone(), issue: jissue.clone() };
+        let connect = client::connect(config.clone(), (jhost.as_str(), jport), jhandler);
+        let mut jh = finish_connect(tokio::time::timeout(Duration::from_secs(20), connect).await, &jissue, &format!("jump host {jhost}"))?;
+        let ok = authenticate(&mut jh, juser.as_deref().unwrap_or(&user), &key_path, password.as_deref())
+            .await
+            .map_err(|e| format!("jump host authentication error: {e}"))?;
+        if !ok {
+            return Err(if password.is_some() { "AUTH_FAILED".into() } else { "AUTH_NEED_PASSWORD".into() });
+        }
+        let channel = jh
+            .channel_open_direct_tcpip(host.clone(), port as u32, "127.0.0.1", 0)
+            .await
+            .map_err(|e| format!("jump host {jhost} couldn't reach {host}:{port}: {e}"))?;
+        let connect = client::connect_stream(config, channel.into_stream(), handler);
+        let h = finish_connect(tokio::time::timeout(Duration::from_secs(20), connect).await, &issue, &format!("{host}:{port}"))?;
+        jump_handle = Some(jh);
+        h
+    } else {
+        let connect = client::connect(config, (host.as_str(), port), handler);
+        finish_connect(tokio::time::timeout(Duration::from_secs(20), connect).await, &issue, &format!("{host}:{port}"))?
+    };
+
     let ok = authenticate(&mut handle, &user, &key_path, password.as_deref())
         .await
         .map_err(|e| format!("authentication error: {e}"))?;
@@ -182,7 +233,7 @@ pub async fn sftp_connect(
     let sftp = SftpSession::new(channel.into_stream()).await.map_err(|e| format!("SFTP not available: {e}"))?;
     let home = sftp.canonicalize(".").await.unwrap_or_else(|_| "/".into());
 
-    let old = state.conns.lock().unwrap().insert(conn_id, Arc::new(Conn { sftp, handle }));
+    let old = state.conns.lock().unwrap().insert(conn_id, Arc::new(Conn { sftp, handle, _jump: jump_handle }));
     if let Some(old) = old {
         let _ = old.handle.disconnect(russh::Disconnect::ByApplication, "", "en").await;
     }
