@@ -49,6 +49,9 @@ export function initTerminals(h) {
     byPty.delete(e.payload.id);
     pane.exited = true;
     const code = e.payload.code ?? "?";
+    // Like Windows Terminal: a clean exit (you typed `exit`) closes the pane; a failure stays
+    // open so the error can be read.
+    if (code === 0 && !pane.spec.keepOnExit) return closeTab(pane.id);
     pane.term.write(`\r\n\x1b[90m[process exited (${code}) — Enter closes the pane, R restarts]\x1b[0m\r\n`);
     renderTabs();
   });
@@ -180,7 +183,7 @@ export function closeTab(paneId) {
   const group = groups.get(pane.groupId);
   const i = group.panes.indexOf(pane);
   removeFromTree(group, pane);
-  group.panes = leaves(group.root);
+  group.panes = group.root ? leaves(group.root) : []; // root is null once the last pane is gone
   if (group.panes.length) {
     if (group.active === pane) group.active = group.panes[Math.max(0, i - 1)];
     layoutGroup(group);
