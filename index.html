@@ -29,6 +29,7 @@
         <div class="sidebar-footer">
           <button id="open-settings" class="ghost-btn">⚙ Settings</button>
         </div>
+        <div class="resizer" id="r-sidebar"></div>
       </aside>
 
       <aside id="files-panel">
@@ -50,6 +51,7 @@
         </div>
         <div id="transfers"></div>
         <div id="files-drop" class="hidden">Drop to upload</div>
+        <div class="resizer" id="r-files"></div>
       </aside>
 
       <main id="main">
@@ -82,6 +84,7 @@
       </main>
 
       <aside id="ai-panel">
+        <div class="resizer resizer-left" id="r-ai"></div>
         <div class="ai-header">
           <span class="ai-title">✦ Assistant</span>
           <select id="chat-provider" title="Provider">
@@ -98,6 +101,7 @@
             Code blocks get <b>Insert</b> and <b>Run</b> buttons.
           </div>
         </div>
+        <div id="h-resizer"></div>
         <form id="chat-form">
           <div class="chat-opts">
             <label class="ctx"><input type="checkbox" id="ctx-toggle" checked /> Attach terminal output</label>

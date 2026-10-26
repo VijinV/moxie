@@ -310,6 +310,88 @@ $("explain-btn").addEventListener("click", () => {
 });
 $("chat-provider").addEventListener("change", (e) => saveSettings({ ...settings, chat_provider: e.target.value }));
 
+// ------------------------------------------------------------------ resizers
+
+function initResizers() {
+  const root = document.documentElement;
+  const terminals = $("terminals");
+
+  // Restore persisted widths
+  const saved = (key) => localStorage.getItem("moxie-" + key);
+  if (saved("sidebar-w")) root.style.setProperty("--sidebar-w", saved("sidebar-w"));
+  if (saved("files-open-w")) root.style.setProperty("--files-open-w", saved("files-open-w"));
+  if (saved("ai-open-w")) root.style.setProperty("--ai-open-w", saved("ai-open-w"));
+
+  function drag(el, onMove) {
+    el.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      document.body.style.userSelect = "none";
+      terminals.style.pointerEvents = "none";
+      el.classList.add("dragging");
+      const move = (e) => onMove(e.clientX);
+      const up = () => {
+        el.classList.remove("dragging");
+        document.body.style.userSelect = "";
+        terminals.style.pointerEvents = "";
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+  }
+
+  drag($("r-sidebar"), (x) => {
+    const w = Math.max(160, Math.min(480, x)) + "px";
+    root.style.setProperty("--sidebar-w", w);
+    localStorage.setItem("moxie-sidebar-w", w);
+    allTabs().forEach(positionGhost);
+  });
+
+  drag($("r-files"), (x) => {
+    if (!document.body.classList.contains("files-open")) return;
+    const sidebarW = parseFloat(getComputedStyle(root).getPropertyValue("--sidebar-w"));
+    const w = Math.max(180, Math.min(600, x - sidebarW)) + "px";
+    root.style.setProperty("--files-open-w", w);
+    localStorage.setItem("moxie-files-open-w", w);
+    allTabs().forEach(positionGhost);
+  });
+
+  drag($("r-ai"), (x) => {
+    if (!document.body.classList.contains("ai-open")) return;
+    const w = Math.max(260, Math.min(720, window.innerWidth - x)) + "px";
+    root.style.setProperty("--ai-open-w", w);
+    localStorage.setItem("moxie-ai-open-w", w);
+    allTabs().forEach(positionGhost);
+  });
+
+  // Vertical resizer inside the AI panel (chat-log ↕ chat-form)
+  const hResizer = $("h-resizer");
+  if (saved("chat-form-h")) root.style.setProperty("--chat-form-h", saved("chat-form-h"));
+
+  hResizer.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    document.body.style.userSelect = "none";
+    hResizer.classList.add("dragging");
+    const panel = document.getElementById("ai-panel");
+    const onMove = (e) => {
+      const panelRect = panel.getBoundingClientRect();
+      const fromBottom = panelRect.bottom - e.clientY;
+      const h = Math.max(100, Math.min(panelRect.height - 120, fromBottom)) + "px";
+      root.style.setProperty("--chat-form-h", h);
+      localStorage.setItem("moxie-chat-form-h", h);
+    };
+    const onUp = () => {
+      hResizer.classList.remove("dragging");
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
 // ------------------------------------------------------------------ boot
 
 async function boot() {
@@ -325,6 +407,7 @@ async function boot() {
   initFiles({ promptPassword });
   initCommandBar();
   initChat();
+  initResizers();
 
   // A webview reload leaves the previous page's shells and SFTP connections running.
   await Promise.all([invoke("pty_kill_all"), invoke("sftp_disconnect_all")]);
