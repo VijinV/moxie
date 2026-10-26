@@ -1,9 +1,12 @@
-// Tabs + xterm.js instances, each bound to a backend PTY (local shell, ssh, or CLI agent).
+// Tabs and split panes. A tab ("group") holds 1–4 panes laid out in a row or a column; each pane
+// is an xterm.js instance bound to a backend PTY (local shell, ssh, or CLI agent).
+// The rest of the app works with panes: activeTab() returns the focused pane of the active tab.
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { setupShellIntegration, filterOutput, initShellIntegration } from "./shell.js";
 
 const THEME = {
   background: "#0d0f15",
@@ -17,10 +20,12 @@ const THEME = {
   brightBlue: "#8db0ff", brightMagenta: "#c7a9ff", brightCyan: "#a4daff", brightWhite: "#e5e9f5",
 };
 export const FONT_FAMILY = '"Cascadia Mono", "Cascadia Code", Consolas, "JetBrains Mono", monospace';
+const MAX_PANES = 4;
 
-const tabs = new Map(); // tabId -> tab
-const byPty = new Map(); // ptyId -> tab
-let activeId = null;
+const panes = new Map(); // paneId -> pane
+const groups = new Map(); // groupId -> { id, panes: [], dir: "row" | "column", active: pane, el }
+const byPty = new Map(); // ptyId -> pane
+let activeGroupId = null;
 let seq = 0;
 let hooks = {};
 let fontSize = 14;
@@ -30,36 +35,39 @@ const $tabs = () => document.getElementById("tabs");
 
 export function initTerminals(h) {
   hooks = h;
+  initShellIntegration({ ...h, write: (pane, data) => writeRaw(pane, data) });
   listen("pty-output", (e) => {
-    const tab = byPty.get(e.payload.id);
-    if (!tab) return;
-    tab.lastOutput = Date.now();
-    tab.term.write(e.payload.data);
+    const pane = byPty.get(e.payload.id);
+    if (!pane) return;
+    pane.lastOutput = Date.now();
+    const data = filterOutput(pane, e.payload.data);
+    if (data) pane.term.write(data, () => hooks.onOutput?.(pane));
   });
   listen("pty-exit", (e) => {
-    const tab = byPty.get(e.payload.id);
-    if (!tab) return;
+    const pane = byPty.get(e.payload.id);
+    if (!pane) return;
     byPty.delete(e.payload.id);
-    tab.exited = true;
+    pane.exited = true;
     const code = e.payload.code ?? "?";
-    tab.term.write(`\r\n\x1b[90m[process exited (${code}) — Enter closes the tab, R restarts]\x1b[0m\r\n`);
+    pane.term.write(`\r\n\x1b[90m[process exited (${code}) — Enter closes the pane, R restarts]\x1b[0m\r\n`);
     renderTabs();
   });
-  new ResizeObserver(() => fitActive()).observe($terminals());
 }
 
 export function setFontSize(size) {
   fontSize = size;
-  for (const t of tabs.values()) t.term.options.fontSize = size;
-  fitActive();
+  for (const p of panes.values()) p.term.options.fontSize = size;
+  for (const p of panes.values()) fitPane(p);
 }
 
-/** spec: { title, program, args, kind: "shell" | "ssh" | "agent", shellName } */
-export async function openTab(spec) {
+/**
+ * spec: { title, program, args, kind: "shell" | "ssh" | "agent", shellName, integration }
+ * opts.splitOf: put the new pane next to this pane (same tab); opts.dir: "row" | "column".
+ */
+export async function openTab(spec, opts = {}) {
   const id = ++seq;
   const el = document.createElement("div");
   el.className = "term-pane";
-  $terminals().appendChild(el);
 
   const term = new Terminal({
     fontFamily: FONT_FAMILY,
@@ -71,131 +79,327 @@ export async function openTab(spec) {
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
-  term.open(el);
 
   const ghost = document.createElement("div");
   ghost.className = "ghost hidden";
-  el.appendChild(ghost);
 
-  const tab = { id, spec, el, term, fit, ghost, ptyId: null, exited: false, line: "", suggestion: "", lastOutput: 0 };
-  tabs.set(id, tab);
-  activate(id);
+  const pane = { id, spec, el, term, fit, ghost, ptyId: null, exited: false, line: "", suggestion: "", lastOutput: 0, lastKey: 0 };
+  panes.set(id, pane);
+
+  let group = opts.splitOf ? groups.get(opts.splitOf.groupId) : null;
+  if (group && group.panes.length >= MAX_PANES) group = null;
+  if (group) {
+    insertSplit(group, opts.splitOf, pane, opts.dir ?? "row");
+  } else {
+    const gid = ++seq;
+    const gel = document.createElement("div");
+    gel.className = "pane-group";
+    $terminals().appendChild(gel);
+    pane.node = { type: "pane", pane, size: 1 };
+    group = { id: gid, root: pane.node, panes: [pane], active: pane, el: gel };
+    groups.set(gid, group);
+  }
+  pane.groupId = group.id;
+  layoutGroup(group);
+  term.open(el);
+  el.appendChild(ghost);
+  setupShellIntegration(pane, spec.integration ?? "none");
+
+  el.addEventListener("mousedown", () => focusPane(pane), true);
+  term.textarea?.addEventListener("focus", () => focusPane(pane, false));
+  new ResizeObserver(() => fitPane(pane)).observe(el);
 
   term.onData((data) => {
-    if (tab.exited) {
+    if (pane.exited) {
       if (data === "\r") closeTab(id);
-      else if (data.toLowerCase() === "r") restart(tab);
+      else if (data.toLowerCase() === "r") restart(pane);
       return;
     }
-    hooks.onInput?.(tab, data);
-    if (tab.ptyId != null) invoke("pty_write", { id: tab.ptyId, data });
+    // Escape sequences here are usually xterm's own replies (focus in/out, device queries), not typing.
+    if (!data.startsWith("\x1b")) pane.lastKey = Date.now();
+    hooks.onInput?.(pane, data);
+    if (pane.ptyId != null) invoke("pty_write", { id: pane.ptyId, data });
   });
   term.onResize(({ cols, rows }) => {
-    if (tab.ptyId != null && !tab.exited) invoke("pty_resize", { id: tab.ptyId, cols, rows });
+    if (pane.ptyId != null && !pane.exited) invoke("pty_resize", { id: pane.ptyId, cols, rows });
   });
-  term.onCursorMove(() => hooks.onCursor?.(tab));
-  term.onScroll(() => hooks.onCursor?.(tab));
-  term.attachCustomKeyEventHandler((ev) => hooks.onKey?.(tab, ev) ?? true);
+  term.onCursorMove(() => hooks.onCursor?.(pane));
+  term.onScroll(() => hooks.onCursor?.(pane));
+  term.attachCustomKeyEventHandler((ev) => hooks.onKey?.(pane, ev) ?? true);
 
-  await spawn(tab);
-  return tab;
+  activate(group.id, pane);
+  // Size the terminal before starting the shell: a ConPTY that starts at 80×24 and misses the
+  // first resize draws for the wrong screen height (output lands mid-screen).
+  for (const p of group.panes) fitPane(p);
+  await spawn(pane);
+  return pane;
 }
 
-async function spawn(tab) {
-  const { program, args = [] } = tab.spec;
+async function spawn(pane) {
+  const { program, args = [] } = pane.spec;
   try {
-    tab.ptyId = await invoke("pty_spawn", {
+    pane.ptyId = await invoke("pty_spawn", {
       program,
       args,
       cwd: null,
-      cols: tab.term.cols,
-      rows: tab.term.rows,
-      secretKey: tab.spec.secretKey ?? null,
+      cols: pane.term.cols,
+      rows: pane.term.rows,
+      secretKey: pane.spec.secretKey ?? null,
+      env: pane.spec.env ?? null,
     });
-    tab.exited = false;
-    tab.line = "";
-    byPty.set(tab.ptyId, tab);
+    pane.exited = false;
+    pane.line = "";
+    byPty.set(pane.ptyId, pane);
+    // Resizes that happened while the process was starting were dropped (no ptyId yet).
+    fitPane(pane);
+    invoke("pty_resize", { id: pane.ptyId, cols: pane.term.cols, rows: pane.term.rows });
   } catch (err) {
-    tab.exited = true;
-    tab.term.write(`\x1b[31mFailed to start ${program}: ${err}\x1b[0m\r\n\x1b[90m[Enter closes the tab, R retries]\x1b[0m\r\n`);
+    pane.exited = true;
+    pane.term.write(`\x1b[31mFailed to start ${program}: ${err}\x1b[0m\r\n\x1b[90m[Enter closes the pane, R retries]\x1b[0m\r\n`);
   }
   renderTabs();
 }
 
-function restart(tab) {
-  tab.term.reset();
-  spawn(tab);
+function restart(pane) {
+  pane.term.reset();
+  setupShellIntegration(pane, pane.spec.integration ?? "none");
+  spawn(pane);
 }
 
-export function closeTab(id) {
-  const tab = tabs.get(id);
-  if (!tab) return;
-  if (tab.ptyId != null && !tab.exited) invoke("pty_kill", { id: tab.ptyId });
-  byPty.delete(tab.ptyId);
-  hooks.onClose?.(tab);
-  tab.term.dispose();
-  tab.el.remove();
-  tabs.delete(id);
-  if (activeId === id) {
-    const last = [...tabs.keys()].pop();
-    activeId = null;
+/** Closes one pane; the tab goes away with its last pane. */
+export function closeTab(paneId) {
+  const pane = panes.get(paneId);
+  if (!pane) return;
+  if (pane.ptyId != null && !pane.exited) invoke("pty_kill", { id: pane.ptyId });
+  byPty.delete(pane.ptyId);
+  hooks.onClose?.(pane);
+  pane.term.dispose();
+  pane.el.remove();
+  panes.delete(paneId);
+
+  const group = groups.get(pane.groupId);
+  const i = group.panes.indexOf(pane);
+  removeFromTree(group, pane);
+  group.panes = leaves(group.root);
+  if (group.panes.length) {
+    if (group.active === pane) group.active = group.panes[Math.max(0, i - 1)];
+    layoutGroup(group);
+    if (activeGroupId === group.id) activate(group.id);
+    else renderTabs();
+    return;
+  }
+  group.el.remove();
+  groups.delete(group.id);
+  if (activeGroupId === group.id) {
+    activeGroupId = null;
+    const last = [...groups.keys()].pop();
     if (last) activate(last);
+    else hooks.onActivate?.(null);
   }
   renderTabs();
+  document.getElementById("empty-state").classList.toggle("hidden", groups.size > 0);
 }
 
-export function activate(id) {
-  activeId = id;
-  for (const t of tabs.values()) t.el.classList.toggle("active", t.id === id);
-  document.getElementById("empty-state").classList.toggle("hidden", tabs.size > 0);
+function closeGroup(group) {
+  for (const p of [...group.panes]) closeTab(p.id);
+}
+
+export function activate(groupId, pane = null) {
+  const group = groups.get(groupId);
+  if (!group) return;
+  activeGroupId = groupId;
+  if (pane) group.active = pane;
+  for (const g of groups.values()) g.el.classList.toggle("active", g.id === groupId);
+  document.getElementById("empty-state").classList.toggle("hidden", groups.size > 0);
+  markFocused(group);
   renderTabs();
-  const tab = tabs.get(id);
-  if (tab) {
-    requestAnimationFrame(() => {
-      fitActive();
-      tab.term.focus();
-    });
-  }
-  hooks.onActivate?.(tab);
+  const p = group.active;
+  requestAnimationFrame(() => {
+    for (const x of group.panes) fitPane(x);
+    p.term.focus();
+  });
+  hooks.onActivate?.(p);
+}
+
+/** Makes a pane the focused one in its tab (click / Alt+arrow). */
+export function focusPane(pane, focusTerm = true) {
+  const group = groups.get(pane.groupId);
+  if (!group) return;
+  if (group.active === pane && activeGroupId === group.id) return;
+  group.active = pane;
+  if (activeGroupId !== group.id) return activate(group.id, pane);
+  markFocused(group);
+  renderTabs();
+  if (focusTerm) pane.term.focus();
+  hooks.onActivate?.(pane);
+}
+
+/** Alt+Left/Right/Up/Down: move focus to the neighbouring pane. */
+export function focusNeighbour(delta) {
+  const group = groups.get(activeGroupId);
+  if (!group || group.panes.length < 2) return false;
+  const i = group.panes.indexOf(group.active);
+  const next = group.panes[(i + delta + group.panes.length) % group.panes.length];
+  focusPane(next);
+  return true;
+}
+
+function markFocused(group) {
+  for (const p of group.panes) p.el.classList.toggle("focused", p === group.active);
 }
 
 export function activeTab() {
-  return tabs.get(activeId) ?? null;
+  return groups.get(activeGroupId)?.active ?? null;
 }
 
 export function allTabs() {
-  return [...tabs.values()];
+  return [...panes.values()];
 }
 
-function fitActive() {
-  const tab = tabs.get(activeId);
-  if (!tab) return;
+export const paneCount = (pane) => groups.get(pane?.groupId)?.panes.length ?? 0;
+export const canSplit = (pane) => paneCount(pane) < MAX_PANES;
+
+function fitPane(pane) {
+  if (!pane.el.isConnected || pane.el.offsetParent === null) return;
   try {
-    tab.fit.fit();
+    pane.fit.fit();
   } catch {}
-  hooks.onCursor?.(tab);
+  hooks.onCursor?.(pane);
+}
+
+// ------------------------------------------------------------------ split tree
+// group.root is a node: { type: "pane", pane } or { type: "split", dir: "row" | "column", children }.
+// Splitting in the parent's direction adds a sibling; a different direction nests a new split.
+
+const leaves = (node) => (node.type === "pane" ? [node.pane] : node.children.flatMap(leaves));
+
+function parentOf(node, target) {
+  if (node.type !== "split") return null;
+  for (const c of node.children) {
+    if (c === target) return node;
+    const p = parentOf(c, target);
+    if (p) return p;
+  }
+  return null;
+}
+
+function replaceNode(group, oldNode, newNode) {
+  const parent = parentOf(group.root, oldNode);
+  if (!parent) group.root = newNode;
+  else parent.children[parent.children.indexOf(oldNode)] = newNode;
+}
+
+function insertSplit(group, target, pane, dir) {
+  const leaf = { type: "pane", pane, size: 1 };
+  pane.node = leaf;
+  const tnode = target.node;
+  const parent = parentOf(group.root, tnode);
+  if (parent && parent.dir === dir) {
+    parent.children.splice(parent.children.indexOf(tnode) + 1, 0, leaf);
+  } else {
+    const split = { type: "split", dir, children: [tnode, leaf], size: tnode.size ?? 1 };
+    tnode.size = 1;
+    replaceNode(group, tnode, split);
+  }
+  group.panes = leaves(group.root);
+}
+
+function removeFromTree(group, pane) {
+  const node = pane.node;
+  const parent = parentOf(group.root, node);
+  if (!parent) {
+    group.root = null;
+    return;
+  }
+  parent.children.splice(parent.children.indexOf(node), 1);
+  if (parent.children.length === 1) {
+    const only = parent.children[0];
+    only.size = parent.size;
+    replaceNode(group, parent, only);
+  }
+}
+
+/** Rebuilds a tab's layout from its split tree, with draggable dividers. */
+function layoutGroup(group) {
+  group.el.classList.toggle("multi", group.panes.length > 1);
+  group.el.replaceChildren(group.root ? buildNode(group.root) : "");
+}
+
+function buildNode(node) {
+  if (node.type === "pane") {
+    node.pane.el.style.flex = `${node.size ?? 1} 1 0`;
+    return node.pane.el;
+  }
+  const el = document.createElement("div");
+  el.className = `pane-split ${node.dir}`;
+  el.style.flex = `${node.size ?? 1} 1 0`;
+  node.children.forEach((child, i) => {
+    if (i > 0) el.appendChild(divider(node, i));
+    const cel = buildNode(child);
+    child.el = cel;
+    el.appendChild(cel);
+  });
+  return el;
+}
+
+function divider(split, index) {
+  const d = document.createElement("div");
+  d.className = "pane-divider";
+  d.title = "Drag to resize";
+  d.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    d.setPointerCapture(e.pointerId);
+    const a = split.children[index - 1];
+    const b = split.children[index];
+    const horizontal = split.dir !== "column";
+    const ra = a.el.getBoundingClientRect();
+    const rb = b.el.getBoundingClientRect();
+    const total = horizontal ? ra.width + rb.width : ra.height + rb.height;
+    const start = horizontal ? ra.left : ra.top;
+    const weight = (a.size ?? 1) + (b.size ?? 1);
+    document.body.classList.add("resizing", horizontal ? "resizing-x" : "resizing-y");
+    const move = (ev) => {
+      const pos = (horizontal ? ev.clientX : ev.clientY) - start;
+      const frac = Math.min(0.85, Math.max(0.15, pos / total));
+      a.size = weight * frac;
+      b.size = weight * (1 - frac);
+      a.el.style.flex = `${a.size} 1 0`;
+      b.el.style.flex = `${b.size} 1 0`;
+    };
+    const up = () => {
+      d.removeEventListener("pointermove", move);
+      document.body.classList.remove("resizing", "resizing-x", "resizing-y");
+    };
+    d.addEventListener("pointermove", move);
+    d.addEventListener("pointerup", up, { once: true });
+  });
+  return d;
 }
 
 function renderTabs() {
   const root = $tabs();
   root.innerHTML = "";
-  for (const t of tabs.values()) {
+  for (const g of groups.values()) {
+    const p = g.active;
     const b = document.createElement("div");
-    b.className = "tab" + (t.id === activeId ? " active" : "") + (t.exited ? " exited" : "");
-    const icon = { shell: "›_", ssh: "⇄", agent: "✦" }[t.spec.kind] ?? "›_";
-    b.innerHTML = `<span class="tab-icon kind-${t.spec.kind}">${icon}</span><span class="tab-title"></span><button class="tab-close" title="Close (Ctrl+Shift+W)">×</button>`;
-    b.querySelector(".tab-title").textContent = t.spec.title;
+    b.className = "tab" + (g.id === activeGroupId ? " active" : "") + (g.panes.every((x) => x.exited) ? " exited" : "");
+    const icon = { shell: "›_", ssh: "⇄", agent: "✦" }[p.spec.kind] ?? "›_";
+    b.innerHTML = `<span class="tab-icon kind-${p.spec.kind}">${icon}</span><span class="tab-title"></span>${
+      g.panes.length > 1 ? `<span class="tab-split" title="${g.panes.length} panes">⊞${g.panes.length}</span>` : ""
+    }<button class="tab-close" title="Close tab">×</button>`;
+    b.querySelector(".tab-title").textContent = p.spec.title;
+    b.title = g.panes.map((x) => x.spec.title).join(" | ");
     b.addEventListener("mousedown", (e) => {
-      if (e.button === 1) return closeTab(t.id);
-      if (!e.target.classList.contains("tab-close")) activate(t.id);
+      if (e.button === 1) return closeGroup(g);
+      if (!e.target.classList.contains("tab-close")) activate(g.id);
     });
-    b.querySelector(".tab-close").addEventListener("click", () => closeTab(t.id));
+    b.querySelector(".tab-close").addEventListener("click", () => closeGroup(g));
     root.appendChild(b);
   }
   hooks.onTabsChanged?.();
 }
 
-/** Last `n` lines of the tab's buffer as plain text (for AI context). */
+/** Last `n` lines of the pane's buffer as plain text (for AI context). */
 export function getContext(tab, n = 80) {
   if (!tab) return "";
   const buf = tab.term.buffer.active;
@@ -221,7 +425,7 @@ export function linesFrom(tab, from) {
   return out.join("\n").trim();
 }
 
-/** Types text into the tab as if pasted; `run` presses Enter afterwards. */
+/** Types text into the pane as if pasted; `run` presses Enter afterwards. */
 export function sendText(tab, text, run = false) {
   if (!tab || tab.exited || tab.ptyId == null) return;
   tab.term.paste(text);

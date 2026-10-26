@@ -1,12 +1,16 @@
 import "./styles.css";
 import { invoke } from "@tauri-apps/api/core";
-import { initTerminals, openTab, closeTab, activeTab, allTabs, setFontSize } from "./terminal.js";
+import { initTerminals, openTab, closeTab, activeTab, allTabs, setFontSize, canSplit, focusNeighbour } from "./terminal.js";
 import {
   setSettings, loadHistory, trackInput, onSent, positionGhost, hideSuggestion, acceptSuggestion,
   requestAiCompletion, initCommandBar, openCommandBar, initChat, sendChat, renderMarkdown,
+  onTermOutput, onCommandDone, onCommandStart, onBlockMenu, setAiHooks,
 } from "./ai.js";
+import { powershellIntegrationArgs, bashIntegrationEnv } from "./shell.js";
+import { updateCompletion, completionKey, positionCompletion, closeCompletion } from "./completion.js";
 import { initFiles, toggleFiles, showFilesFor, filesOnClose } from "./files.js";
 import { initLayout } from "./layout.js";
+import { initUpdater, checkForUpdate } from "./updater.js";
 
 initLayout(); // before boot(): it doesn't need the backend
 
@@ -28,6 +32,7 @@ function onKey(tab, ev) {
   const key = ev.key.toLowerCase();
   const plain = !ev.ctrlKey && !ev.altKey && !ev.shiftKey && !ev.metaKey;
 
+  if (completionKey(tab, ev)) return ev.preventDefault(), false;
   if (ev.ctrlKey && !ev.shiftKey && key === "k") return openCommandBar(), false;
   if (ev.ctrlKey && ev.code === "Space") return requestAiCompletion(tab, true), false;
   if (ev.ctrlKey && ev.shiftKey) {
@@ -35,6 +40,8 @@ function onKey(tab, ev) {
     if (key === "t") return newDefaultTab(), false;
     if (key === "f") return toggleFiles(), false;
     if (key === "w") return closeTab(tab.id), false;
+    if (key === "d") return splitActive("row"), false;
+    if (key === "e") return splitActive("column"), false;
     if (key === "c") {
       const sel = tab.term.getSelection();
       if (sel) navigator.clipboard.writeText(sel);
@@ -45,6 +52,10 @@ function onKey(tab, ev) {
       ev.preventDefault();
       return false;
     }
+  }
+  if (ev.altKey && !ev.ctrlKey && !ev.shiftKey && ev.key.startsWith("Arrow")) {
+    const delta = ev.key === "ArrowLeft" || ev.key === "ArrowUp" ? -1 : 1;
+    if (focusNeighbour(delta)) return false;
   }
   if (tab.suggestion && plain && (ev.key === "ArrowRight" || ev.key === "End")) {
     acceptSuggestion(tab);
@@ -73,9 +84,7 @@ function renderShells() {
   const ul = $("shell-list");
   ul.innerHTML = "";
   for (const s of shells) {
-    const li = item(s.name, "›_", () =>
-      openTab({ title: s.name, program: s.program, args: s.args, kind: "shell", shellName: s.name }),
-    );
+    const li = item(s.name, "›_", () => openTab(shellSpec(s)));
     ul.appendChild(li);
   }
 }
@@ -97,8 +106,10 @@ function renderSessions() {
       : `${s.user ? s.user + "@" : ""}${s.host}:${s.port || 22}`;
     const actions = document.createElement("span");
     actions.className = "item-actions";
-    actions.innerHTML = `<button title="Edit">✎</button><button title="Delete">×</button>`;
-    const [edit, del] = actions.querySelectorAll("button");
+    actions.innerHTML = `${s.forwards?.trim() ? '<button title="Start port forwards only (no shell)">🔌</button>' : ""}<button title="Edit">✎</button><button title="Delete">×</button>`;
+    const buttons = [...actions.querySelectorAll("button")];
+    if (s.forwards?.trim()) buttons.shift().addEventListener("click", (e) => (e.stopPropagation(), connectSession(s, { tunnelsOnly: true })));
+    const [edit, del] = buttons;
     edit.addEventListener("click", (e) => (e.stopPropagation(), openSshDialog(s)));
     del.addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -145,23 +156,24 @@ function item(label, icon, onClick) {
   return li;
 }
 
-function connectSession(s) {
-  if (s.type === "bastion") connectBastion(s);
-  else connectSsh(s);
+/** opts: { splitOf, dir } to open in a split pane; { tunnelsOnly } for port forwards without a shell. */
+function connectSession(s, opts = {}) {
+  if (s.type === "bastion") connectBastion(s, opts);
+  else connectSsh(s, opts);
 }
 
-function connectSsh(s) {
+function connectSsh(s, opts = {}) {
   const problem = hostProblem(s.host);
   if (problem) {
     setStatus(problem);
     if (sessions.some((x) => x.id === s.id)) openSshDialog(s); // let them fix the saved host
     return;
   }
-  openSshTab(s, { host: s.host, port: s.port });
+  openSshTab(s, { host: s.host, port: s.port, ...opts });
 }
 
 /** Opens `az network bastion tunnel` to the VM, then SSH/SFTP over 127.0.0.1:<port>. */
-async function connectBastion(s) {
+async function connectBastion(s, opts = {}) {
   const tunnelKey = `bastion:${s.id}`;
   setStatus(`Opening Azure Bastion tunnel to ${vmName(s.vm)}…`);
   let port;
@@ -185,27 +197,86 @@ async function connectBastion(s) {
   }
   setStatus(`Bastion tunnel ready on 127.0.0.1:${port}`);
   // The local port changes every time, so key the host's identity on the VM, not on 127.0.0.1:<port>.
-  openSshTab(s, { host: "127.0.0.1", port, hostKeyAlias: `${vmName(s.vm)}.bastion`, tunnelKey });
+  openSshTab(s, { host: "127.0.0.1", port, hostKeyAlias: `${vmName(s.vm)}.bastion`, tunnelKey, ...opts });
 }
 
-function openSshTab(s, { host, port, hostKeyAlias = null, tunnelKey = null }) {
+function openSshTab(s, { host, port, hostKeyAlias = null, tunnelKey = null, splitOf = null, dir, tunnelsOnly = false }) {
   const args = [];
   if (port && String(port) !== "22") args.push("-p", String(port));
   if (hostKeyAlias) args.push("-o", `HostKeyAlias=${hostKeyAlias}`);
   if (s.key) args.push("-i", s.key);
+  const fwd = parseForwards(s.forwards);
+  args.push(...fwd.args);
+  if (tunnelsOnly) args.push("-N");
   if (s.extra) args.push(...s.extra.split(/\s+/).filter(Boolean));
   args.push(s.user ? `${s.user}@${host}` : host);
   const secretKey = secretKeyFor(s);
-  openTab({
-    title: sessionTitle(s),
-    program: "ssh",
-    args,
-    kind: "ssh",
-    secretKey,
-    tunnelKey,
-    ssh: { host, port, user: s.user, key: s.key, secretKey, hostKeyAlias, label: hostKeyAlias ?? host },
-  });
-  toggleFiles(true); // MobaXterm opens the SFTP browser alongside every SSH session
+  openTab(
+    {
+      title: tunnelsOnly ? `🔌 ${sessionTitle(s)}` : sessionTitle(s),
+      program: "ssh",
+      args,
+      kind: "ssh",
+      sessionId: s.id,
+      secretKey,
+      tunnelKey,
+      forwards: fwd.labels,
+      // Silently add shell integration on the server's bash/zsh prompt (unless turned off).
+      integration: tunnelsOnly || s.integrate === false ? "none" : "inject",
+      ssh: { host, port, user: s.user, key: s.key, secretKey, hostKeyAlias, label: hostKeyAlias ?? host },
+    },
+    { splitOf, dir },
+  );
+  if (!tunnelsOnly) toggleFiles(true); // MobaXterm opens the SFTP browser alongside every SSH session
+}
+
+/**
+ * Port forwards, one per line:  L [bind:]localPort:host:remotePort   (local → through the server)
+ *                                R [bind:]remotePort:host:localPort  (server → back to you)
+ *                                D [bind:]port                       (SOCKS proxy)
+ */
+function parseForwards(text = "") {
+  const args = [];
+  const labels = [];
+  let error = null;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const m = line.match(/^([LRD])\s+(\S+)$/i);
+    const kind = m?.[1].toUpperCase();
+    const spec = m?.[2];
+    const ok =
+      kind === "D" ? /^([\w.-]+:)?\d{1,5}$/.test(spec) : !!kind && /^([\w.-]+:)?\d{1,5}:[\w.\-[\]]+:\d{1,5}$/.test(spec);
+    if (!ok) {
+      error ??= `Bad forward "${line}". Use e.g. "L 5432:localhost:5432", "R 8080:localhost:3000" or "D 1080".`;
+      continue;
+    }
+    args.push(`-${kind}`, spec);
+    const parts = spec.split(":");
+    labels.push(
+      kind === "D" ? `SOCKS :${parts.pop()}` : kind === "L" ? `:${parts.at(-3)} → ${parts.at(-2)}:${parts.at(-1)}` : `remote :${parts.at(-3)} → ${parts.at(-2)}:${parts.at(-1)}`,
+    );
+  }
+  return { args, labels, error };
+}
+
+/** Ctrl+Shift+D / Ctrl+Shift+E: open the same shell or session next to the focused pane. */
+function splitActive(dir) {
+  const pane = activeTab();
+  if (!pane) return newDefaultTab();
+  if (!canSplit(pane)) return setStatus("A tab holds up to 4 panes.");
+  const session = pane.spec.sessionId && sessions.find((x) => x.id === pane.spec.sessionId);
+  if (session && !pane.spec.title.startsWith("🔌")) connectSession(session, { splitOf: pane, dir });
+  else openTab({ ...pane.spec }, { splitOf: pane, dir });
+}
+
+/** Spec for a local shell, with shell integration where the shell supports it. */
+function shellSpec(s) {
+  // PowerShell: script via -EncodedCommand. bash: hook via environment. zsh/others: typed at the prompt.
+  const integration = s.kind === "powershell" || s.kind === "bash" ? "native" : s.kind === "zsh" ? "inject" : "none";
+  const args = s.kind === "powershell" ? [...s.args, ...powershellIntegrationArgs()] : s.args;
+  const env = s.kind === "bash" ? bashIntegrationEnv(/wsl/i.test(s.program)) : null;
+  return { title: s.name, program: s.program, args, env, kind: "shell", shellName: s.name, integration };
 }
 
 const secretKeyFor = (s) => `ssh:${s.id}`;
@@ -236,7 +307,7 @@ function promptPassword(ssh, reason) {
 
 function newDefaultTab() {
   const s = shells[0];
-  if (s) openTab({ title: s.name, program: s.program, args: s.args, kind: "shell", shellName: s.name });
+  if (s) openTab(shellSpec(s));
 }
 
 // ------------------------------------------------------------------ dialogs
@@ -270,6 +341,7 @@ function validateSshForm() {
       ? "Paste the VM's full resource ID: /subscriptions/<id>/resourceGroups/<rg>/providers/Microsoft.Compute/virtualMachines/<vm>"
       : "",
   );
+  f.forwards.setCustomValidity(parseForwards(f.forwards.value).error ?? "");
 }
 $("ssh-form").addEventListener("input", validateSshForm);
 
@@ -278,7 +350,8 @@ function openSshDialog(session = null) {
   const form = $("ssh-form");
   form.reset();
   const s = session ?? { port: 22 };
-  for (const k of ["id", "name", "host", "port", "user", "key", "extra", "bastion", "rg", "vm", "sub"]) form.elements[k].value = s[k] ?? "";
+  for (const k of ["id", "name", "host", "port", "user", "key", "extra", "bastion", "rg", "vm", "sub", "forwards"]) form.elements[k].value = s[k] ?? "";
+  form.elements.integrate.checked = s.integrate !== false;
   form.elements.type.value = s.type ?? "ssh";
   if (!s.port) form.elements.port.value = 22;
   validateSshForm();
@@ -306,6 +379,8 @@ $("ssh-dialog").addEventListener("close", async () => {
     user: f.user.value.trim(),
     key: f.key.value.trim(),
     extra: f.extra.value.trim(),
+    forwards: f.forwards.value.trim(),
+    integrate: f.integrate.checked,
     ...(type === "bastion" && {
       bastion: f.bastion.value.trim(),
       rg: f.rg.value.trim(),
@@ -384,7 +459,17 @@ function setStatus(text) {
 
 function updateStatus() {
   const tab = activeTab();
-  $("status-left").textContent = tab ? `${tab.spec.title} · ${tab.term.cols}×${tab.term.rows}` : "";
+  const info = tab?.si?.info;
+  $("status-left").textContent = tab
+    ? [
+        tab.spec.title,
+        info && `${info.user}@${info.host} · ${info.os}`,
+        tab.spec.forwards?.length && `🔌 ${tab.spec.forwards.join(", ")}`,
+        `${tab.term.cols}×${tab.term.rows}`,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
   const ac = settings.autocomplete_ai ? `autocomplete: ${PROVIDER_LABEL[settings.complete_provider]}` : "AI autocomplete off";
   if (!$("status-ai").classList.contains("busy") && !$("status-ai").classList.contains("error")) {
     $("status-ai").textContent = `✦ ${PROVIDER_LABEL[settings.chat_provider]} · ${ac}`;
@@ -411,16 +496,25 @@ async function boot() {
   initTerminals({
     onKey,
     onInput: trackInput,
-    onCursor: positionGhost,
+    onCursor: (tab) => (positionGhost(tab), positionCompletion(tab)),
     onSent,
     onActivate: (tab) => (updateStatus(), showFilesFor(tab)),
     onTabsChanged: updateStatus,
+    onOutput: onTermOutput,
+    onCommandStart,
+    onCommandDone,
+    onBlockMenu,
+    onInfo: (tab) => tab === activeTab() && updateStatus(),
     onClose: (tab) => {
+      closeCompletion(tab);
       filesOnClose(tab);
       if (tab.spec.tunnelKey) invoke("bastion_tunnel_stop", { key: tab.spec.tunnelKey });
     },
   });
   initFiles({ promptPassword });
+  setAiHooks({ onLineChanged: updateCompletion });
+  initUpdater();
+  $("check-updates").addEventListener("click", () => checkForUpdate(true));
   initCommandBar();
   initChat();
 

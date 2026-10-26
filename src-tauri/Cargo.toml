@@ -22,3 +22,5 @@ russh = { version = "0.64.1", default-features = false, features = ["ring", "fla
 russh-sftp = "3.0.1"
 tauri-plugin-dialog = "2"
 keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"

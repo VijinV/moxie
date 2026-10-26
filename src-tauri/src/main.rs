@@ -13,6 +13,8 @@ use tauri::Manager;
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(pty::PtyState::default())
         .manage(ai::AiState::default())
         .manage(sftp::SftpState::default())
@@ -31,6 +33,7 @@ fn main() {
             config::get_sessions,
             config::save_sessions,
             config::load_shell_history,
+            config::fs_list,
             ai::ai_chat,
             ai::ai_cancel,
             ai::ai_oneshot,
@@ -47,6 +50,7 @@ fn main() {
             sftp::sftp_download,
             sftp::sftp_upload,
             sftp::sftp_open,
+            sftp::sftp_edit,
             sftp::reveal_local,
             sftp::open_url,
             chats::chats_list,

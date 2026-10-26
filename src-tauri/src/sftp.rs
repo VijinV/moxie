@@ -13,10 +13,11 @@ use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::{FileType, OpenFlags};
 use serde::Serialize;
 use std::collections::HashMap;
+use std::time::SystemTime;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 struct Conn {
@@ -27,6 +28,8 @@ struct Conn {
 #[derive(Default)]
 pub struct SftpState {
     conns: Mutex<HashMap<String, Arc<Conn>>>,
+    /// "connId:remotePath" of files open for edit-and-auto-upload.
+    editing: Mutex<std::collections::HashSet<String>>,
 }
 
 fn conn(state: &SftpState, id: &str) -> Result<Arc<Conn>, String> {
@@ -471,4 +474,91 @@ pub fn reveal_local(path: String) -> Result<(), String> {
     } else {
         open_path(Path::new(&path).parent().unwrap_or(Path::new("/")))
     }
+}
+
+// ---------------------------------------------------------------- edit & auto-upload
+
+#[derive(Clone, Serialize)]
+struct EditEvent {
+    remote: String,
+    status: &'static str, // "opened" | "uploaded" | "error" | "stopped"
+    error: Option<String>,
+}
+
+fn stamp(path: &Path) -> Option<(SystemTime, u64)> {
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.modified().ok()?, m.len()))
+}
+
+/// Downloads a remote file, opens it in the user's editor, and uploads it back every time it's
+/// saved, for as long as the SFTP connection is open.
+#[tauri::command]
+pub async fn sftp_edit(app: AppHandle, state: State<'_, SftpState>, conn_id: String, remote: String) -> Result<String, String> {
+    let c = conn(&state, &conn_id)?;
+    // Mirror the remote folder in the temp dir so same-named files from different folders don't clash.
+    let parent: String = remote
+        .rsplit_once('/')
+        .map(|(d, _)| d)
+        .unwrap_or("")
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '.' { ch } else { '_' })
+        .collect();
+    let dir = std::env::temp_dir().join("moxie-edit").join(&conn_id).join(parent.trim_start_matches('_'));
+    tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
+    let name = remote.rsplit('/').next().unwrap_or("file").to_string();
+    let local = dir.join(&name);
+    let mut t = Transfer { app: &app, id: format!("edit-{name}"), last_emit: std::time::Instant::now() };
+    download(&c.sftp, &remote, &local, false, &mut t).await.map_err(|e| format!("{e:#}"))?;
+
+    let editor = crate::config::load_settings().editor_cmd.trim().to_string();
+    if editor.is_empty() {
+        open_path(&local)?;
+    } else {
+        let (exe, prefix) = crate::pty::resolve_program(&editor);
+        std::process::Command::new(exe)
+            .args(prefix)
+            .arg(&local)
+            .spawn()
+            .map_err(|e| format!("couldn't start editor \"{editor}\": {e}"))?;
+    }
+
+    let key = format!("{conn_id}:{remote}");
+    let first = state.editing.lock().unwrap().insert(key.clone());
+    let _ = app.emit("sftp-edit", EditEvent { remote: remote.clone(), status: "opened", error: None });
+    if !first {
+        return Ok(local.to_string_lossy().into_owned()); // already being watched
+    }
+
+    let local_w = local.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut last = stamp(&local_w);
+        loop {
+            tokio::time::sleep(Duration::from_millis(800)).await;
+            let state = app.state::<SftpState>();
+            let Some(c) = state.conns.lock().unwrap().get(&conn_id).cloned() else { break };
+            let now = stamp(&local_w);
+            if now.is_none() || now == last {
+                continue;
+            }
+            // Editors often write in several steps; wait until the file stops changing.
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            let settled = stamp(&local_w);
+            if settled != now {
+                continue;
+            }
+            last = settled;
+            let mut t = Transfer { app: &app, id: format!("edit-{}", remote), last_emit: std::time::Instant::now() };
+            let result = upload(&c.sftp, &local_w, &remote, &mut t).await;
+            let _ = app.emit(
+                "sftp-edit",
+                match result {
+                    Ok(()) => EditEvent { remote: remote.clone(), status: "uploaded", error: None },
+                    Err(e) => EditEvent { remote: remote.clone(), status: "error", error: Some(format!("{e:#}")) },
+                },
+            );
+        }
+        app.state::<SftpState>().editing.lock().unwrap().remove(&key);
+        let _ = app.emit("sftp-edit", EditEvent { remote, status: "stopped", error: None });
+    });
+    Ok(local.to_string_lossy().into_owned())
 }

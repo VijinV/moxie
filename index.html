@@ -78,6 +78,7 @@
           <span id="status-left"></span>
           <span class="spacer"></span>
           <span id="status-ai"></span>
+          <button id="update-pill" class="update-pill hidden"></button>
         </div>
       </main>
 
@@ -171,7 +172,11 @@
           <label class="check remember"><input type="checkbox" name="remember" checked /> Remember</label>
         </div>
         <label>Private key (optional) <input name="key" placeholder="C:\Users\you\.ssh\id_ed25519 — defaults to ~/.ssh/id_*" /></label>
+        <label>Port forwarding (optional, one per line)
+          <textarea name="forwards" rows="2" spellcheck="false" placeholder="L 5432:localhost:5432   (your :5432 → server's localhost:5432)&#10;R 8080:localhost:3000   (server :8080 → your :3000) · D 1080 (SOCKS proxy)"></textarea>
+        </label>
         <label>Extra ssh args (optional) <input name="extra" placeholder="-o ServerAliveInterval=30" /></label>
+        <label class="check"><input type="checkbox" name="integrate" checked /> Shell integration on the server (command blocks, exit codes, AI knows the OS). Turn off for routers / non-bash shells.</label>
         <p class="hint">
           The terminal uses your system OpenSSH client (so ~/.ssh/config, agents and known_hosts work) and
           types the saved password at the login prompt. Remembered passwords are kept in the OS credential
@@ -255,6 +260,9 @@
             <label class="grow">codex path <input name="codex_cli_path" placeholder="auto (PATH)" /></label>
             <label class="grow">az path (Bastion) <input name="az_cli_path" placeholder="auto (PATH)" /></label>
           </div>
+          <div class="row">
+            <label class="grow">Editor for SFTP "Edit" <input name="editor_cmd" placeholder="blank = default app · e.g. code, notepad++" /></label>
+          </div>
         </fieldset>
         <fieldset>
           <legend>Terminal</legend>
@@ -262,6 +270,7 @@
         </fieldset>
         <p class="hint">Prototype note: keys are saved in plain JSON in your config folder.</p>
         <div class="dialog-actions">
+          <button type="button" id="check-updates" class="ghost-btn" style="margin-right:auto">Check for updates</button>
           <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>
           <button value="save" class="primary-btn">Save</button>
         </div>

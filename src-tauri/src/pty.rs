@@ -39,6 +39,8 @@ pub struct ShellInfo {
     name: String,
     program: String,
     args: Vec<String>,
+    /// "powershell" | "bash" | "zsh" | "cmd" | "other": tells the UI how to add shell integration.
+    kind: String,
 }
 
 /// Resolves a program through PATH. Windows `.cmd`/`.bat` shims (npm global installs)
@@ -65,6 +67,7 @@ pub fn pty_spawn(
     cols: u16,
     rows: u16,
     secret_key: Option<String>,
+    env: Option<HashMap<String, String>>,
 ) -> Result<u32, String> {
     let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
     let pair = native_pty_system().openpty(size).map_err(|e| e.to_string())?;
@@ -78,6 +81,9 @@ pub fn pty_spawn(
     }
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    for (k, v) in env.unwrap_or_default() {
+        cmd.env(k, v);
+    }
 
     let mut child = pair
         .slave
@@ -195,11 +201,22 @@ pub fn find_program(name: String) -> Option<String> {
     which::which(name).ok().map(|p| p.to_string_lossy().to_string())
 }
 
-fn shell(name: &str, program: &str, args: &[&str]) -> ShellInfo {
+fn shell(name: &str, program: &str, args: &[&str], kind: &str) -> ShellInfo {
     ShellInfo {
         name: name.into(),
         program: program.into(),
         args: args.iter().map(|a| a.to_string()).collect(),
+        kind: kind.into(),
+    }
+}
+
+fn kind_of(program: &str) -> &'static str {
+    if program.ends_with("zsh") {
+        "zsh"
+    } else if program.ends_with("bash") {
+        "bash"
+    } else {
+        "other"
     }
 }
 
@@ -207,33 +224,28 @@ fn shell(name: &str, program: &str, args: &[&str]) -> ShellInfo {
 pub fn list_shells() -> Vec<ShellInfo> {
     let mut shells = Vec::new();
     if cfg!(windows) {
-        // PSReadLine's own inline prediction would collide with Moxie's ghost-text suggestions.
-        let ps_args = [
-            "-NoLogo",
-            "-NoExit",
-            "-Command",
-            "try { Set-PSReadLineOption -PredictionSource None -ErrorAction Stop } catch {}",
-        ];
+        // The UI appends -EncodedCommand with Moxie's shell integration script.
+        let ps_args = ["-NoLogo", "-NoExit"];
         if which::which("pwsh").is_ok() {
-            shells.push(shell("PowerShell 7", "pwsh", &ps_args));
+            shells.push(shell("PowerShell 7", "pwsh", &ps_args, "powershell"));
         }
-        shells.push(shell("Windows PowerShell", "powershell.exe", &ps_args));
-        shells.push(shell("Command Prompt", "cmd.exe", &[]));
+        shells.push(shell("Windows PowerShell", "powershell.exe", &ps_args, "powershell"));
+        shells.push(shell("Command Prompt", "cmd.exe", &[], "cmd"));
         let git_bash = r"C:\Program Files\Git\bin\bash.exe";
         if std::path::Path::new(git_bash).exists() {
-            shells.push(shell("Git Bash", git_bash, &["--login", "-i"]));
+            shells.push(shell("Git Bash", git_bash, &["--login", "-i"], "bash"));
         }
         if which::which("wsl").is_ok() {
-            shells.push(shell("WSL", "wsl.exe", &[]));
+            shells.push(shell("WSL", "wsl.exe", &[], "bash"));
         }
     } else {
         let default = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
-        shells.push(shell("Default shell", &default, &["-l"]));
+        shells.push(shell("Default shell", &default, &["-l"], kind_of(&default)));
         for s in ["zsh", "bash", "fish"] {
             if let Ok(p) = which::which(s) {
                 let p = p.to_string_lossy().to_string();
                 if p != default {
-                    shells.push(shell(s, &p, &["-l"]));
+                    shells.push(shell(s, &p, &["-l"], kind_of(s)));
                 }
             }
         }

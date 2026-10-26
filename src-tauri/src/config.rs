@@ -27,6 +27,8 @@ pub struct Settings {
     pub claude_cli_path: String,
     pub codex_cli_path: String,
     pub az_cli_path: String,
+    /// Editor for SFTP "Edit" (e.g. "code"); empty = the file type's default app.
+    pub editor_cmd: String,
 }
 
 impl Default for Settings {
@@ -48,6 +50,7 @@ impl Default for Settings {
             claude_cli_path: String::new(),
             codex_cli_path: String::new(),
             az_cli_path: String::new(),
+            editor_cmd: String::new(),
         }
     }
 }
@@ -122,4 +125,25 @@ pub fn load_shell_history() -> Vec<String> {
     let mut out: Vec<String> = lines.into_iter().rev().filter(|l| seen.insert(l.clone())).take(3000).collect();
     out.reverse();
     out
+}
+
+#[derive(Serialize)]
+pub struct DirEntry {
+    name: String,
+    is_dir: bool,
+}
+
+/// Local directory listing for path autocompletion (capped; unreadable entries skipped).
+#[tauri::command]
+pub fn fs_list(dir: String) -> Result<Vec<DirEntry>, String> {
+    let dir = if dir.is_empty() { ".".to_string() } else { dir };
+    let rd = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    Ok(rd
+        .flatten()
+        .take(2000)
+        .map(|e| DirEntry {
+            name: e.file_name().to_string_lossy().into_owned(),
+            is_dir: e.file_type().map(|t| t.is_dir()).unwrap_or(false),
+        })
+        .collect())
 }

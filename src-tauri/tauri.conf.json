@@ -33,6 +33,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQwNTAyN0E0M0M3ODcyRTAKUldUZ2NuZzhwQ2RRMEhhVWJqMGREOW90MHFSK09aYXRJWHJZK24ybDJCc3J6YSs5VDRMRU1GU3IK",
+      "endpoints": [
+        "https://github.com/VijinV/term/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

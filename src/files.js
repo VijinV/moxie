@@ -54,6 +54,17 @@ export function initFiles(opts) {
     if (!e.target.closest("#ctx-menu")) $("ctx-menu").classList.add("hidden");
   });
 
+  listen("sftp-edit", (e) => {
+    const { remote, status, error } = e.payload;
+    const name = remote.split("/").pop();
+    const time = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    if (status === "opened") flash(`Editing ${name}: saves upload to the server automatically`);
+    else if (status === "uploaded") flash(`✓ ${name} uploaded to ${remote} (${time})`);
+    else if (status === "error") flash(`✗ Couldn't upload ${name}: ${error}`);
+    else if (status === "stopped") flash(`Stopped syncing ${name} (connection closed)`);
+    const tab = activeTab();
+    if (status === "uploaded" && tab?.files?.status === "ready" && remote.startsWith(tab.files.cwd)) navigate(tab, tab.files.cwd);
+  });
   listen("sftp-progress", (e) => {
     const t = transfers.get(e.payload.transfer_id);
     if (!t) return;
@@ -165,6 +176,16 @@ function activateEntry(tab, entry) {
   else openRemote(tab, entry);
 }
 
+/** Opens a remote file in the editor; every save is uploaded back (MobaXterm-style). */
+async function editRemote(tab, entry) {
+  flash(`Opening ${entry.name} for editing…`);
+  try {
+    await invoke("sftp_edit", { connId: tab.files.connId, remote: entry.path });
+  } catch (err) {
+    flash(`Edit failed: ${err}`);
+  }
+}
+
 async function openRemote(tab, entry) {
   flash(`Opening ${entry.name}…`);
   try {
@@ -256,6 +277,7 @@ function entryMenu(tab, entry, x, y) {
   const items = entry
     ? [
         [entry.is_dir ? "Open folder" : "Open", () => activateEntry(tab, entry)],
+        ...(entry.is_dir ? [] : [["Edit (uploads on save)", () => editRemote(tab, entry)]]),
         ["Download…", () => download(tab, entry)],
         ["Rename… (F2)", () => rename(tab, entry)],
         ["Delete (Del)", () => remove(tab, entry)],
