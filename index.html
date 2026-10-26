@@ -43,18 +43,13 @@
           <span class="files-title" id="files-title">SFTP</span>
           <button class="icon-btn" id="files-close" title="Hide panel">×</button>
         </div>
-        <div class="panel-tabs">
-          <button data-view="files" class="on">📁 Files</button>
-          <button data-view="server">📊 Server</button>
-        </div>
-        <div id="dashboard" class="files-only-server"></div>
         <div class="files-toolbar files-only">
-          <button class="icon-btn" data-files="up" title="Parent folder">↑</button>
-          <button class="icon-btn" data-files="home" title="Home">⌂</button>
-          <button class="icon-btn" data-files="refresh" title="Refresh">⟳</button>
-          <button class="icon-btn" data-files="mkdir" title="New folder">＋</button>
-          <button class="icon-btn" data-files="upload" title="Upload files">⤒</button>
-          <button class="icon-btn" data-files="upload-dir" title="Upload a folder">⇪</button>
+          <button class="icon-btn" data-files="up" title="Parent folder"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3.5M4 7.5l4-4 4 4"/></svg></button>
+          <button class="icon-btn" data-files="home" title="Home"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7.5 8 3l5.5 4.5M4 6.5V13h3V9.5h2V13h3V6.5"/></svg></button>
+          <button class="icon-btn" data-files="refresh" title="Refresh"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3"/></svg></button>
+          <button class="icon-btn" data-files="mkdir" title="New folder"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5v8h13V6H8L6.5 4.5z"/><path d="M8 8v3M6.5 9.5h3"/></svg></button>
+          <button class="icon-btn" data-files="upload" title="Upload files"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V3M5 5.5 8 2.5l3 3M2.5 10.5v3h11v-3"/></svg></button>
+          <button class="icon-btn" data-files="upload-dir" title="Upload a folder"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5v8h13V6H8L6.5 4.5z"/><path d="M8 11.5V8M6.5 9.5 8 8l1.5 1.5"/></svg></button>
         </div>
         <input id="files-path" class="filter files-only" spellcheck="false" />
         <div id="files-body" class="files-only">
@@ -83,6 +78,7 @@
             </button>
           </div>
           <div class="spacer"></div>
+          <button id="editor-btn" class="pill-btn" title="Editor: files opened from the SFTP panel or a path (Ctrl+Shift+O)">✎<span class="label">Editor</span><span class="badge"></span></button>
           <button id="files-btn" class="pill-btn" title="SFTP file browser (Ctrl+Shift+F)">📁<span class="label">Files</span></button>
           <button id="explain-btn" class="pill-btn" title="Ask AI about the recent output">💡<span class="label">Explain output</span></button>
           <button id="cmdbar-btn" class="pill-btn" title="Ask: runs commands for you and shows the answer (Ctrl+K)">✦<span class="label">Ask</span> <kbd>Ctrl K</kbd></button>
@@ -99,6 +95,24 @@
           <button id="find-close" class="icon-btn" title="Close (Esc)">×</button>
         </div>
         <div id="terminals">
+          <div id="editor-view">
+            <div class="ed-bar">
+              <div id="ed-tabs"></div>
+              <button id="ed-open" class="icon-btn" title="Open a file from this PC">
+                <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5v8h13V6H8L6.5 4.5z"/></svg>
+              </button>
+              <button id="ed-wrap" class="find-toggle" title="Wrap long lines">Wrap</button>
+              <button id="ed-save" class="pill-btn" title="Save (Ctrl+S)">Save</button>
+              <button id="ed-hide" class="pill-btn" title="Back to the terminal (Ctrl+Shift+O)">&gt;_ Terminal</button>
+            </div>
+            <div id="ed-host"></div>
+            <div id="ed-empty">
+              <p>No files open.</p>
+              <p class="hint">Double-click a file in the SFTP panel, Ctrl+click a file path in the terminal, or</p>
+              <button id="ed-empty-open" class="pill-btn">Open a file from this PC…</button>
+            </div>
+            <div id="ed-info"></div>
+          </div>
           <div id="empty-state">
             <div class="logo big">&gt;_</div>
             <p>Open a shell, an SSH session, or an AI agent from the sidebar.</p>
@@ -139,6 +153,10 @@
           </select>
           <button id="chat-history-btn" class="icon-btn" title="Chat history">🕘</button>
           <button id="chat-clear" class="icon-btn" title="New chat (the current one stays in history)">＋</button>
+          <button id="chat-full" class="icon-btn" title="Full view: chat only, terminal hidden (Ctrl+Shift+M)">
+            <svg class="i-expand" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/></svg>
+            <svg class="i-collapse" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 6.5h-4v-4M9.5 6.5l4.5-4.5M2.5 9.5h4v4M6.5 9.5 2 14"/></svg>
+          </button>
         </div>
         <div class="chat-quick">
           <button id="qa-summary" class="pill-btn" title="Write a handoff summary of this session from its commands and output">📝 Summarize session</button>
@@ -408,17 +426,64 @@
     <dialog id="changelog-dialog">
       <div class="changelog-header">
         <span class="changelog-title">✦ What's New in Moxie</span>
-        <span class="changelog-ver">v0.3.0</span>
+        <span class="changelog-ver">v0.3.1</span>
         <button class="icon-btn" id="changelog-close" title="Close">×</button>
       </div>
       <div id="changelog-update-banner" class="changelog-banner hidden">
         <span id="changelog-update-text"></span>
         <button id="changelog-update-btn" class="primary-btn">Update now</button>
       </div>
+      <div id="changelog-update-notes" class="changelog-update-notes msg hidden"></div>
       <div class="changelog-body">
 
         <div class="changelog-section">
-          <div class="changelog-section-tag">v0.3.0 — Current</div>
+          <div class="changelog-section-tag">v0.3.1 — Current</div>
+          <div class="changelog-item">
+            <span class="changelog-icon">✎</span>
+            <div>
+              <div class="changelog-item-title">Built-in editor</div>
+              <div class="changelog-item-desc">Edit files inside Moxie, like MobaTextEditor: double-click a file in the SFTP panel, Ctrl+click a path in the terminal, or open one from this PC. Syntax highlighting, tabs, find &amp; replace, and <code>Ctrl+S</code> saves straight back to the server. It won't overwrite a file that changed on the server since you opened it. <code>Ctrl+Shift+O</code> switches between editor and terminal.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">⬆</span>
+            <div>
+              <div class="changelog-item-title">Update notice</div>
+              <div class="changelog-item-desc">When a new version is out, a card offers <b>Update now</b>, <b>What's new</b> (with the release notes) or <b>Later</b>, and What's New gets a dot.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">⤢</span>
+            <div>
+              <div class="changelog-item-title">Chat full view</div>
+              <div class="changelog-item-desc">Hide the terminal and give the chat the whole window: ⤢ in the Assistant header or <code>Ctrl+Shift+M</code>. Terminals keep running underneath, so the agent can still run commands.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">▣</span>
+            <div>
+              <div class="changelog-item-title">One activity monitor, more server details</div>
+              <div class="changelog-item-desc">The monitor now shows disks, uptime, OS and per-core CPU, for this PC and for servers. On SSH tabs it reuses the SFTP connection, so it works through jump hosts and Azure Bastion. It replaces the SFTP panel's Server tab.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">⌂</span>
+            <div>
+              <div class="changelog-item-title">Cleaner SFTP toolbar</div>
+              <div class="changelog-item-desc">Consistent icons for parent folder, home, refresh, new folder and upload.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">✓</span>
+            <div>
+              <div class="changelog-item-title">Fixes</div>
+              <div class="changelog-item-desc">Long hints in the sidebar wrap instead of scrolling sideways. Process names in the monitor are escaped, so a server can't inject markup.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="changelog-section">
+          <div class="changelog-section-tag">v0.3.0</div>
           <div class="changelog-item">
             <span class="changelog-icon">✦</span>
             <div>

@@ -21,6 +21,8 @@ export async function checkForUpdate(manual) {
     }
     pending = update;
     showPill(`⬆ Update to v${update.version}`);
+    document.getElementById("open-changelog")?.classList.add("has-update");
+    if (!manual) showToast(update);
     if (manual) installUpdate();
   } catch (err) {
     if (manual) alert(`Couldn't check for updates: ${err}`);
@@ -35,7 +37,35 @@ function showPill(text) {
   pill.onclick = installUpdate;
 }
 
-async function installUpdate() {
+/** A card in the corner, once per version ("Later" hides it until the next version). */
+function showToast(update) {
+  let dismissed = "";
+  try { dismissed = localStorage.getItem("moxie-update-dismissed") ?? ""; } catch {}
+  if (dismissed === update.version || document.getElementById("update-toast")) return;
+  const el = document.createElement("div");
+  el.id = "update-toast";
+  el.innerHTML = `<div class="ut-title">⬆ Moxie <span></span> is available</div>
+    <div class="ut-sub">You have v${__APP_VERSION__}. Updating takes a few seconds and restarts Moxie.</div>
+    <div class="ut-actions"><button class="ghost-btn" data-a="later">Later</button><button class="ghost-btn" data-a="notes">What's new</button><button class="primary-btn" data-a="install">Update now</button></div>`;
+  el.querySelector(".ut-title span").textContent = `v${update.version}`;
+  el.addEventListener("click", (e) => {
+    const a = e.target.closest("[data-a]")?.dataset.a;
+    if (!a) return;
+    if (a === "later") {
+      try { localStorage.setItem("moxie-update-dismissed", update.version); } catch {}
+      el.remove();
+    } else if (a === "notes") {
+      el.remove();
+      document.getElementById("open-changelog")?.click();
+    } else {
+      el.remove();
+      installUpdate();
+    }
+  });
+  document.body.append(el);
+}
+
+export async function installUpdate() {
   if (!pending) return;
   if (!confirm(`Install Moxie v${pending.version} and restart now?\nOpen terminals and SSH sessions will be closed.`)) return;
   const pill = document.getElementById("update-pill");

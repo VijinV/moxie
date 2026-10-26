@@ -25,9 +25,12 @@ export const SHORTCUTS = [
     ["Ctrl+K", "Ask bar: runs commands and shows the answer"],
     ["Shift+Enter (in Ask bar)", "Just type the command at the prompt"],
     ["Ctrl+Shift+A", "Toggle the AI panel"],
+    ["Ctrl+Shift+M", "Chat full view (hide the terminal)"],
+    ["Ctrl+Shift+O", "Editor / terminal"],
+    ["Ctrl+S (in the editor)", "Save the file"],
   ]],
   ["Panels", [
-    ["Ctrl+Shift+F", "SFTP files / server dashboard"],
+    ["Ctrl+Shift+F", "SFTP files"],
     ["Ctrl+Shift+S", "Snippets"],
     ["Ctrl+/", "This list"],
   ]],

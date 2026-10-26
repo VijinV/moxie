@@ -17,9 +17,9 @@ import { openShortcuts } from "./shortcuts.js";
 import { initFind, openFind } from "./find.js";
 import { THEMES, FONTS } from "./themes.js";
 import { initSnippets, openSnippetEditor, focusSnippets } from "./snippets.js";
-import { initDashboard, refreshDashboard } from "./dashboard.js";
 import { initUpdater, checkForUpdate, getPending } from "./updater.js";
 import { initMonitor, setMonitorTab } from "./monitor.js";
+import { initEditor, toggleEditor, openInEditor } from "./editor.js";
 
 initLayout(); // before boot(): it doesn't need the backend
 
@@ -56,6 +56,8 @@ function onKey(tab, ev) {
     if (key === "b") return toggleBroadcast(), false;
     if (key === "s") return focusSnippets(), false;
     if (key === "a") return toggleAiPanel(), false;
+    if (key === "m") return toggleChatFull(), false;
+    if (key === "o") return toggleEditor(), false;
     if (key === "t") return newDefaultTab(), false;
     if (key === "f") return toggleFiles(), false;
     if (key === "w") return closeTab(tab.id), false;
@@ -92,6 +94,8 @@ document.addEventListener("keydown", (ev) => {
   if (ev.target.closest?.(".xterm")) return;
   const key = ev.key.toLowerCase();
   if (ev.ctrlKey && ev.shiftKey && key === "a") (ev.preventDefault(), toggleAiPanel());
+  else if (ev.ctrlKey && ev.shiftKey && key === "m") (ev.preventDefault(), toggleChatFull());
+  else if (ev.ctrlKey && ev.shiftKey && key === "o") (ev.preventDefault(), toggleEditor());
   else if (ev.ctrlKey && ev.shiftKey && key === "t") (ev.preventDefault(), newDefaultTab());
   else if (ev.ctrlKey && ev.shiftKey && key === "f") (ev.preventDefault(), toggleFiles());
   else if (ev.ctrlKey && !ev.shiftKey && key === "k" && activeTab()) (ev.preventDefault(), openCommandBar());
@@ -142,7 +146,10 @@ async function openPath(pane, raw) {
   let local = path;
   if (/^\/[a-zA-Z]\//.test(local)) local = `${local[1]}:${local.slice(2)}`; // Git Bash /c/…
   else if (!/^[A-Za-z]:/.test(local) && cwd && !cwd.startsWith("/")) local = `${cwd}\\${local.replace(/^\.[\\/]/, "")}`;
-  invoke("reveal_local", { path: local.replace(/\//g, "\\") }).catch((e) => setStatus(String(e)));
+  local = local.replace(/\//g, "\\");
+  // Text files open in the editor; folders and everything else in Explorer.
+  const r = await openInEditor(null, local).catch(() => null);
+  if (!r?.ok) invoke("reveal_local", { path: local }).catch((e) => setStatus(String(e)));
 }
 
 // ------------------------------------------------------------------ sidebar
@@ -731,7 +738,17 @@ async function saveSettings(next) {
 
 function toggleAiPanel(force) {
   const open = document.body.classList.toggle("ai-open", force);
+  if (!open) document.body.classList.remove("chat-full");
   if (open) $("chat-input").focus();
+  else activeTab()?.term.focus();
+}
+
+/** Chat only: the AI panel covers the terminal area (the terminals keep running underneath). */
+function toggleChatFull(force) {
+  const full = document.body.classList.toggle("chat-full", force);
+  if (full) document.body.classList.add("ai-open"), toggleEditor(false);
+  try { localStorage.setItem("moxie-chat-full", full ? "1" : ""); } catch {}
+  if (full) $("chat-input").focus();
   else activeTab()?.term.focus();
 }
 
@@ -767,10 +784,13 @@ function openChangelog() {
   const banner = $("changelog-update-banner");
   if (update) {
     $("changelog-update-text").textContent = `v${update.version} is available`;
+    $("changelog-update-notes").innerHTML = renderMarkdown(update.body ?? "");
+    $("changelog-update-notes").classList.toggle("hidden", !update.body);
     banner.classList.remove("hidden");
     $("changelog-update-btn").onclick = () => { dlg.close(); checkForUpdate(true); };
   } else {
     banner.classList.add("hidden");
+    $("changelog-update-notes").classList.add("hidden");
   }
   dlg.showModal();
 }
@@ -785,6 +805,8 @@ $("session-filter").addEventListener("input", renderSessions);
 $("open-settings").addEventListener("click", openSettings);
 $("new-tab").addEventListener("click", newDefaultTab);
 $("toggle-ai").addEventListener("click", () => toggleAiPanel());
+$("chat-full").addEventListener("click", () => toggleChatFull());
+try { if (localStorage.getItem("moxie-chat-full")) toggleChatFull(true); } catch {}
 $("cmdbar-btn").addEventListener("click", () => openCommandBar());
 $("files-btn").addEventListener("click", () => toggleFiles());
 $("explain-btn").addEventListener("click", () => {
@@ -802,7 +824,7 @@ async function boot() {
     onInput: trackInput,
     onCursor: (tab) => (positionGhost(tab), positionCompletion(tab)),
     onSent,
-    onActivate: (tab) => (updateStatus(), showFilesFor(tab), refreshDashboard(), setMonitorTab(tab), onPaneActivated(tab)),
+    onActivate: (tab) => (updateStatus(), showFilesFor(tab), setMonitorTab(tab), onPaneActivated(tab)),
     onTabsChanged: () => (updateStatus(), saveWorkspaceSoon()),
     onOpenLink: openLink,
     onOpenPath: openPath,
@@ -826,8 +848,19 @@ async function boot() {
       return s ? sessionTitle(s) : "SSH session";
     },
   });
-  initDashboard();
   initMonitor();
+  initEditor({
+    flash: setStatus,
+    // The editor and chat full view both cover the terminal area: one at a time.
+    onChange: (on) => {
+      if (!on || !document.body.classList.contains("chat-full")) return;
+      document.body.classList.remove("chat-full");
+      try { localStorage.setItem("moxie-chat-full", ""); } catch {}
+    },
+  });
+  // Picking a terminal tab (or opening one) brings the terminal back in front of the editor.
+  $("tabs").addEventListener("mousedown", () => toggleEditor(false));
+  $("new-tab").addEventListener("click", () => toggleEditor(false));
   initUpdater();
   $("check-updates").addEventListener("click", () => checkForUpdate(true));
   initCommandBar();
