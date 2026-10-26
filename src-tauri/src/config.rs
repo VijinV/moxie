@@ -29,6 +29,13 @@ pub struct Settings {
     pub az_cli_path: String,
     /// Editor for SFTP "Edit" (e.g. "code"); empty = the file type's default app.
     pub editor_cmd: String,
+
+    pub terminal_theme: String,
+    pub font_family: String,
+    pub line_height: f32,
+    pub cursor_style: String,
+    /// Reopen the previous tabs, splits and sessions on start.
+    pub restore_workspace: bool,
 }
 
 impl Default for Settings {
@@ -51,6 +58,11 @@ impl Default for Settings {
             codex_cli_path: String::new(),
             az_cli_path: String::new(),
             editor_cmd: String::new(),
+            terminal_theme: "moxie".into(),
+            font_family: String::new(),
+            line_height: 1.0,
+            cursor_style: "block".into(),
+            restore_workspace: true,
         }
     }
 }
@@ -146,4 +158,19 @@ pub fn fs_list(dir: String) -> Result<Vec<DirEntry>, String> {
             is_dir: e.file_type().map(|t| t.is_dir()).unwrap_or(false),
         })
         .collect())
+}
+
+/// Open tabs / splits / sessions, saved continuously so they can be restored on the next start.
+#[tauri::command]
+pub fn workspace_get() -> serde_json::Value {
+    std::fs::read_to_string(config_dir().join("workspace.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(serde_json::Value::Null)
+}
+
+#[tauri::command]
+pub fn workspace_save(workspace: serde_json::Value) -> Result<(), String> {
+    let json = serde_json::to_string(&workspace).map_err(|e| e.to_string())?;
+    std::fs::write(config_dir().join("workspace.json"), json).map_err(|e| e.to_string())
 }

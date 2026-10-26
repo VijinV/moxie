@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Marked, Renderer } from "marked";
 import DOMPurify from "dompurify";
 import { activeTab, getContext, sendText, writeRaw, cursorLine, linesFrom, FONT_FAMILY } from "./terminal.js";
-import { currentInput, blockOutput, nextBlock } from "./shell.js";
+import { currentInput, blockOutput, nextBlock, toggleFold } from "./shell.js";
 import { showMenu } from "./ui.js";
 
 let settings = {};
@@ -888,6 +888,8 @@ export function onBlockMenu(tab, block, x, y) {
     [
       ["Copy command", () => navigator.clipboard.writeText(block.cmd)],
       ["Copy output", () => navigator.clipboard.writeText(blockOutput(tab, block))],
+      [block.fold ? "Unfold output" : "Fold output", () => toggleFold(tab, block)],
+      ["Save as snippet…", () => hooks.onSaveSnippet?.(block.cmd)],
       ["—"],
       [block.exit ? "✦ Explain & fix" : "✦ Explain output", () => explainBlock(tab, block, !!block.exit)],
       ["Run again", () => sendText(tab, block.cmd, true)],

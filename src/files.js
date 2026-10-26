@@ -107,6 +107,25 @@ export function showFilesFor(tab) {
   render();
 }
 
+/** Ctrl+click on a remote path: open the folder, or show the file selected in its folder. */
+export async function openRemotePath(tab, path) {
+  const f = tab.files;
+  if (f?.status !== "ready") return;
+  try {
+    await invoke("sftp_list", { connId: f.connId, path });
+    return navigate(tab, path); // it's a folder
+  } catch {}
+  const parentDir = parent(path);
+  await navigate(tab, parentDir);
+  const name = path.split("/").pop();
+  const i = f.entries.findIndex((e) => e.name === name);
+  if (i < 0) return flash(`Not found on the server: ${path}`);
+  f.selected = i;
+  render();
+  $("files-body").querySelector(".file-row.selected")?.scrollIntoView({ block: "center" });
+  flash(`${name}: right-click for Edit / Download`);
+}
+
 export function filesOnClose(tab) {
   if (tab.files) invoke("sftp_disconnect", { connId: tab.files.connId });
 }

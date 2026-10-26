@@ -3,6 +3,8 @@
 // The rest of the app works with panes: activeTab() returns the focused pane of the active tab.
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -29,6 +31,8 @@ let activeGroupId = null;
 let seq = 0;
 let hooks = {};
 let fontSize = 14;
+// Appearance, set from Settings (theme, font, line height, cursor).
+let look = { theme: THEME, fontFamily: FONT_FAMILY, lineHeight: 1, cursorStyle: "block" };
 
 const $terminals = () => document.getElementById("terminals");
 const $tabs = () => document.getElementById("tabs");
@@ -63,6 +67,18 @@ export function setFontSize(size) {
   for (const p of panes.values()) fitPane(p);
 }
 
+export const getFontSize = () => fontSize;
+
+/** Applies theme / font / line height / cursor style to every open terminal (and new ones). */
+export function setAppearance(next) {
+  look = { ...look, ...next };
+  for (const p of panes.values()) {
+    Object.assign(p.term.options, { theme: look.theme, fontFamily: look.fontFamily, lineHeight: look.lineHeight, cursorStyle: look.cursorStyle });
+    fitPane(p);
+  }
+  document.documentElement.style.setProperty("--term-bg", look.theme.background);
+}
+
 /**
  * spec: { title, program, args, kind: "shell" | "ssh" | "agent", shellName, integration }
  * opts.splitOf: put the new pane next to this pane (same tab); opts.dir: "row" | "column".
@@ -73,20 +89,26 @@ export async function openTab(spec, opts = {}) {
   el.className = "term-pane";
 
   const term = new Terminal({
-    fontFamily: FONT_FAMILY,
+    fontFamily: look.fontFamily,
     fontSize,
+    lineHeight: look.lineHeight,
+    cursorStyle: look.cursorStyle,
     cursorBlink: true,
     scrollback: 10000,
     allowProposedApi: true,
-    theme: THEME,
+    theme: look.theme,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  const search = new SearchAddon();
+  term.loadAddon(search);
+  // Ctrl+click opens links (a plain click is for selecting text).
+  term.loadAddon(new WebLinksAddon((ev, uri) => (ev.ctrlKey || ev.metaKey) && hooks.onOpenLink?.(uri)));
 
   const ghost = document.createElement("div");
   ghost.className = "ghost hidden";
 
-  const pane = { id, spec, el, term, fit, ghost, ptyId: null, exited: false, line: "", suggestion: "", lastOutput: 0, lastKey: 0 };
+  const pane = { id, spec, el, term, fit, search, ghost, ptyId: null, exited: false, line: "", suggestion: "", lastOutput: 0, lastKey: 0 };
   panes.set(id, pane);
 
   let group = opts.splitOf ? groups.get(opts.splitOf.groupId) : null;
@@ -107,6 +129,7 @@ export async function openTab(spec, opts = {}) {
   term.open(el);
   el.appendChild(ghost);
   setupShellIntegration(pane, spec.integration ?? "none");
+  registerPathLinks(pane);
 
   el.addEventListener("mousedown", () => focusPane(pane), true);
   term.textarea?.addEventListener("focus", () => focusPane(pane, false));
@@ -122,6 +145,9 @@ export async function openTab(spec, opts = {}) {
     if (!data.startsWith("\x1b")) pane.lastKey = Date.now();
     hooks.onInput?.(pane, data);
     if (pane.ptyId != null) invoke("pty_write", { id: pane.ptyId, data });
+    // Multi-exec: mirror keystrokes to every other live pane of the tab (or of all tabs).
+    const targets = broadcastTargets(pane);
+    for (const p of targets) invoke("pty_write", { id: p.ptyId, data });
   });
   term.onResize(({ cols, rows }) => {
     if (pane.ptyId != null && !pane.exited) invoke("pty_resize", { id: pane.ptyId, cols, rows });
@@ -215,6 +241,7 @@ export function activate(groupId, pane = null) {
   for (const g of groups.values()) g.el.classList.toggle("active", g.id === groupId);
   document.getElementById("empty-state").classList.toggle("hidden", groups.size > 0);
   markFocused(group);
+  markBroadcast();
   renderTabs();
   const p = group.active;
   requestAnimationFrame(() => {
@@ -372,6 +399,7 @@ function divider(split, index) {
     const up = () => {
       d.removeEventListener("pointermove", move);
       document.body.classList.remove("resizing", "resizing-x", "resizing-y");
+      hooks.onTabsChanged?.(); // remember the new split sizes
     };
     d.addEventListener("pointermove", move);
     d.addEventListener("pointerup", up, { once: true });
@@ -439,4 +467,127 @@ export function sendText(tab, text, run = false) {
 
 export function writeRaw(tab, data) {
   if (tab?.ptyId != null && !tab.exited) invoke("pty_write", { id: tab.ptyId, data });
+}
+
+// ------------------------------------------------------------------ file paths (Ctrl+click)
+
+// C:\path\file, /abs/path, ~/x, ./rel, ../rel — optionally with :line[:col].
+const PATH_RE = /(?:[A-Za-z]:\\[^\s"'<>|*?]+|(?:~|\.{1,2})?\/[\w.@%+~-]+(?:\/[\w.@%+~-]*)+|(?:~|\.{1,2})\/[\w.@%+~-]+)(?::\d+(?::\d+)?)?/g;
+
+function registerPathLinks(pane) {
+  pane.term.registerLinkProvider({
+    provideLinks(y, callback) {
+      const text = pane.term.buffer.active.getLine(y - 1)?.translateToString(true) ?? "";
+      const links = [];
+      for (const m of text.matchAll(PATH_RE)) {
+        const before = text.slice(0, m.index);
+        if (/[\w-]+:\/*$/.test(before) || before.endsWith("/")) continue; // part of a URL
+        const value = m[0].replace(/[.,;:)\]]+$/, "");
+        if (value.length < 3) continue;
+        links.push({
+          range: { start: { x: m.index + 1, y }, end: { x: m.index + value.length, y } },
+          text: value,
+          decorations: { underline: true, pointerCursor: true },
+          activate: (ev, t) => (ev.ctrlKey || ev.metaKey) && hooks.onOpenPath?.(pane, t),
+        });
+      }
+      callback(links);
+    },
+  });
+}
+
+// ------------------------------------------------------------------ multi-exec (broadcast)
+
+let broadcastMode = "off"; // "off" | "tab" | "all"
+
+/** Cycles Off → this tab's panes → all tabs → Off. Returns the new mode. */
+export function cycleBroadcast() {
+  broadcastMode = { off: "tab", tab: "all", all: "off" }[broadcastMode];
+  markBroadcast();
+  return broadcastMode;
+}
+export const getBroadcast = () => broadcastMode;
+
+function broadcastTargets(pane) {
+  if (broadcastMode === "off") return [];
+  const pool = broadcastMode === "tab" ? groups.get(pane.groupId)?.panes ?? [] : [...panes.values()];
+  return pool.filter((p) => p !== pane && !p.exited && p.ptyId != null && p.spec.kind !== "agent");
+}
+
+function markBroadcast() {
+  for (const g of groups.values()) {
+    const on = broadcastMode === "all" || (broadcastMode === "tab" && g.id === activeGroupId);
+    g.el.classList.toggle("broadcast", on && (broadcastMode === "all" ? panes.size > 1 : g.panes.length > 1));
+  }
+}
+
+// ------------------------------------------------------------------ jump between commands
+
+/** Ctrl+Shift+↑/↓: scroll to the previous / next command block. */
+export function jumpBlock(pane, dir) {
+  const blocks = pane?.si?.blocks ?? [];
+  if (!blocks.length) return false;
+  const top = pane.term.buffer.active.viewportY;
+  const starts = blocks.map((b) => (b.promptMarker ?? b.outMarker).line).filter((l) => l >= 0);
+  const target = dir < 0 ? starts.filter((l) => l < top).pop() : starts.find((l) => l > top);
+  if (target == null) return dir > 0 ? (pane.term.scrollToBottom(), true) : false;
+  pane.term.scrollToLine(target);
+  return true;
+}
+
+// ------------------------------------------------------------------ workspace save / restore
+
+/** Layout of every tab: split trees whose leaves are described by `describe(pane)` (or skipped). */
+export function serializeWorkspace(describe) {
+  const node = (n) => {
+    if (n.type === "pane") {
+      const d = describe(n.pane);
+      return d ? { type: "pane", size: n.size ?? 1, pane: d } : null;
+    }
+    const children = n.children.map(node).filter(Boolean);
+    if (!children.length) return null;
+    return children.length === 1 ? { ...children[0], size: n.size ?? 1 } : { type: "split", dir: n.dir, size: n.size ?? 1, children };
+  };
+  const tabs = [];
+  let active = 0;
+  for (const g of groups.values()) {
+    const t = g.root && node(g.root);
+    if (!t) continue;
+    if (g.id === activeGroupId) active = tabs.length;
+    tabs.push(t);
+  }
+  return { tabs, active };
+}
+
+/** Recreates one tab from a saved tree whose leaves already carry their spec. */
+export async function openTabTree(tree) {
+  const specs = [];
+  const collect = (n) => (n.type === "pane" ? specs.push(n.spec) : n.children.forEach(collect));
+  collect(tree);
+  if (!specs.length) return;
+  const first = await openTab(specs[0]);
+  const all = [first];
+  for (const s of specs.slice(1, MAX_PANES)) all.push(await openTab(s, { splitOf: first, dir: "row" }));
+  const group = groups.get(first.groupId);
+  let i = 0;
+  const build = (n) => {
+    if (n.type === "pane") {
+      const p = all[i++];
+      if (!p) return null;
+      p.node.size = n.size ?? 1;
+      return p.node;
+    }
+    const children = n.children.map(build).filter(Boolean);
+    if (children.length === 1) return Object.assign(children[0], { size: n.size ?? 1 });
+    return { type: "split", dir: n.dir, size: n.size ?? 1, children };
+  };
+  group.root = build(tree);
+  group.panes = leaves(group.root);
+  layoutGroup(group);
+  for (const p of group.panes) fitPane(p);
+}
+
+export function activateIndex(i) {
+  const g = [...groups.values()][i];
+  if (g) activate(g.id);
 }

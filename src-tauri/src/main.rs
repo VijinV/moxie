@@ -34,6 +34,8 @@ fn main() {
             config::save_sessions,
             config::load_shell_history,
             config::fs_list,
+            config::workspace_get,
+            config::workspace_save,
             ai::ai_chat,
             ai::ai_cancel,
             ai::ai_oneshot,

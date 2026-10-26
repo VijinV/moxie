@@ -1,6 +1,9 @@
 import "./styles.css";
 import { invoke } from "@tauri-apps/api/core";
-import { initTerminals, openTab, closeTab, activeTab, allTabs, setFontSize, canSplit, focusNeighbour } from "./terminal.js";
+import {
+  initTerminals, openTab, closeTab, activeTab, allTabs, setFontSize, getFontSize, canSplit, focusNeighbour,
+  setAppearance, cycleBroadcast, getBroadcast, jumpBlock, serializeWorkspace, openTabTree, activateIndex,
+} from "./terminal.js";
 import {
   setSettings, loadHistory, trackInput, onSent, positionGhost, hideSuggestion, acceptSuggestion,
   requestAiCompletion, initCommandBar, openCommandBar, initChat, sendChat, renderMarkdown,
@@ -8,9 +11,12 @@ import {
 } from "./ai.js";
 import { powershellIntegrationArgs, bashIntegrationEnv } from "./shell.js";
 import { updateCompletion, completionKey, positionCompletion, closeCompletion } from "./completion.js";
-import { initFiles, toggleFiles, showFilesFor, filesOnClose } from "./files.js";
+import { initFiles, toggleFiles, showFilesFor, filesOnClose, openRemotePath } from "./files.js";
 import { initLayout } from "./layout.js";
 import { initUpdater, checkForUpdate } from "./updater.js";
+import { openShortcuts } from "./shortcuts.js";
+import { initFind, openFind } from "./find.js";
+import { THEMES, FONTS } from "./themes.js";
 
 initLayout(); // before boot(): it doesn't need the backend
 
@@ -35,7 +41,16 @@ function onKey(tab, ev) {
   if (completionKey(tab, ev)) return ev.preventDefault(), false;
   if (ev.ctrlKey && !ev.shiftKey && key === "k") return openCommandBar(), false;
   if (ev.ctrlKey && ev.code === "Space") return requestAiCompletion(tab, true), false;
+  if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && key === "f") return openFind(), false;
+  if (ev.ctrlKey && (ev.key === "/" || ev.code === "Slash")) return openShortcuts(), false;
+  if (ev.ctrlKey && !ev.shiftKey && (ev.key === "=" || ev.key === "+")) return zoom(1), false;
+  if (ev.ctrlKey && !ev.shiftKey && ev.key === "-") return zoom(-1), false;
+  if (ev.ctrlKey && ev.shiftKey && (ev.key === "ArrowUp" || ev.key === "ArrowDown")) {
+    jumpBlock(tab, ev.key === "ArrowUp" ? -1 : 1);
+    return false;
+  }
   if (ev.ctrlKey && ev.shiftKey) {
+    if (key === "b") return toggleBroadcast(), false;
     if (key === "a") return toggleAiPanel(), false;
     if (key === "t") return newDefaultTab(), false;
     if (key === "f") return toggleFiles(), false;
@@ -76,7 +91,54 @@ document.addEventListener("keydown", (ev) => {
   else if (ev.ctrlKey && ev.shiftKey && key === "t") (ev.preventDefault(), newDefaultTab());
   else if (ev.ctrlKey && ev.shiftKey && key === "f") (ev.preventDefault(), toggleFiles());
   else if (ev.ctrlKey && !ev.shiftKey && key === "k" && activeTab()) (ev.preventDefault(), openCommandBar());
+  else if (ev.ctrlKey && (ev.key === "/" || ev.code === "Slash")) (ev.preventDefault(), openShortcuts());
 });
+
+function zoom(delta) {
+  const size = Math.max(9, Math.min(28, getFontSize() + delta));
+  saveSettings({ ...settings, font_size: size });
+}
+
+function toggleBroadcast() {
+  const mode = cycleBroadcast();
+  const btn = $("broadcast-btn");
+  btn.classList.toggle("on", mode !== "off");
+  btn.dataset.mode = mode;
+  btn.title = { off: "Broadcast typing to all panes in this tab (Ctrl+Shift+B)", tab: "Broadcasting to all panes in this tab · click: all tabs", all: "Broadcasting to ALL tabs · click: turn off" }[mode];
+  setStatus({ off: "Broadcast off", tab: "📡 Typing goes to every pane in this tab", all: "📡 Typing goes to every open terminal" }[mode]);
+}
+
+/** Appearance from settings → every terminal. */
+function applyAppearance() {
+  setAppearance({
+    theme: THEMES[settings.terminal_theme] ?? THEMES.moxie,
+    fontFamily: settings.font_family ? `${settings.font_family}, "Cascadia Mono", Consolas, monospace` : `"Cascadia Mono", "Cascadia Code", Consolas, "JetBrains Mono", monospace`,
+    lineHeight: Number(settings.line_height) || 1,
+    cursorStyle: settings.cursor_style || "block",
+  });
+}
+
+/** Ctrl+click on a URL in the terminal. */
+function openLink(uri) {
+  invoke("open_url", { url: uri }).catch((e) => setStatus(String(e)));
+}
+
+/** Ctrl+click on a path: local files open (folders in Explorer); remote ones go to the SFTP panel. */
+async function openPath(pane, raw) {
+  const path = raw.replace(/:\d+(:\d+)?$/, ""); // drop :line:col
+  const cwd = pane.si?.cwd;
+  if (pane.spec.kind === "ssh") {
+    const f = pane.files;
+    if (f?.status !== "ready") return setStatus("Open the Files panel to browse the server (Ctrl+Shift+F).");
+    const abs = path.startsWith("/") ? path : path.startsWith("~") ? f.home + path.slice(1) : `${cwd ?? f.cwd}/${path.replace(/^\.\//, "")}`;
+    toggleFiles(true);
+    return openRemotePath(pane, abs);
+  }
+  let local = path;
+  if (/^\/[a-zA-Z]\//.test(local)) local = `${local[1]}:${local.slice(2)}`; // Git Bash /c/…
+  else if (!/^[A-Za-z]:/.test(local) && cwd && !cwd.startsWith("/")) local = `${cwd}\\${local.replace(/^\.[\\/]/, "")}`;
+  invoke("reveal_local", { path: local.replace(/\//g, "\\") }).catch((e) => setStatus(String(e)));
+}
 
 // ------------------------------------------------------------------ sidebar
 
@@ -200,34 +262,99 @@ async function connectBastion(s, opts = {}) {
   openSshTab(s, { host: "127.0.0.1", port, hostKeyAlias: `${vmName(s.vm)}.bastion`, tunnelKey, ...opts });
 }
 
-function openSshTab(s, { host, port, hostKeyAlias = null, tunnelKey = null, splitOf = null, dir, tunnelsOnly = false }) {
+function openSshTab(s, { splitOf = null, dir, ...target }) {
+  openTab(sshSpec(s, target), { splitOf, dir });
+  if (!target.tunnelsOnly) toggleFiles(true); // MobaXterm opens the SFTP browser alongside every SSH session
+}
+
+/** The terminal spec for an SSH session (also used to restore the workspace). */
+function sshSpec(s, { host, port, hostKeyAlias = null, tunnelKey = null, tunnelsOnly = false }) {
   const args = [];
   if (port && String(port) !== "22") args.push("-p", String(port));
   if (hostKeyAlias) args.push("-o", `HostKeyAlias=${hostKeyAlias}`);
   if (s.key) args.push("-i", s.key);
+  if (s.jump) args.push("-J", s.jump);
   const fwd = parseForwards(s.forwards);
   args.push(...fwd.args);
   if (tunnelsOnly) args.push("-N");
   if (s.extra) args.push(...s.extra.split(/\s+/).filter(Boolean));
   args.push(s.user ? `${s.user}@${host}` : host);
   const secretKey = secretKeyFor(s);
-  openTab(
-    {
-      title: tunnelsOnly ? `🔌 ${sessionTitle(s)}` : sessionTitle(s),
-      program: "ssh",
-      args,
-      kind: "ssh",
-      sessionId: s.id,
-      secretKey,
-      tunnelKey,
-      forwards: fwd.labels,
-      // Silently add shell integration on the server's bash/zsh prompt (unless turned off).
-      integration: tunnelsOnly || s.integrate === false ? "none" : "inject",
-      ssh: { host, port, user: s.user, key: s.key, secretKey, hostKeyAlias, label: hostKeyAlias ?? host },
-    },
-    { splitOf, dir },
-  );
-  if (!tunnelsOnly) toggleFiles(true); // MobaXterm opens the SFTP browser alongside every SSH session
+  return {
+    title: tunnelsOnly ? `🔌 ${sessionTitle(s)}` : sessionTitle(s),
+    program: "ssh",
+    args,
+    kind: "ssh",
+    sessionId: s.id,
+    tunnelsOnly,
+    secretKey,
+    tunnelKey,
+    forwards: fwd.labels,
+    // Silently add shell integration on the server's bash/zsh prompt (unless turned off).
+    integration: tunnelsOnly || s.integrate === false ? "none" : "inject",
+    ssh: { host, port, user: s.user, key: s.key, jump: s.jump || null, secretKey, hostKeyAlias, label: hostKeyAlias ?? host },
+  };
+}
+
+// ------------------------------------------------------------------ workspace restore
+
+let restoring = true;
+let saveTimer;
+
+/** How to reopen a pane next time (null: don't restore it). */
+function describePane(pane) {
+  const s = pane.spec;
+  if (s.kind === "shell") return { kind: "shell", shellName: s.shellName };
+  if (s.kind === "ssh" && s.sessionId) return { kind: "session", sessionId: s.sessionId, tunnelsOnly: !!s.tunnelsOnly };
+  if (s.kind === "agent") return { kind: "agent", title: s.title, program: s.program };
+  return null;
+}
+
+function saveWorkspaceSoon() {
+  if (restoring) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => invoke("workspace_save", { workspace: serializeWorkspace(describePane) }).catch(() => {}), 600);
+}
+
+async function specFor(d) {
+  if (d.kind === "shell") {
+    const sh = shells.find((x) => x.name === d.shellName);
+    return sh ? shellSpec(sh) : null;
+  }
+  if (d.kind === "agent") return { title: d.title, program: d.program, args: [], kind: "agent" };
+  const s = sessions.find((x) => x.id === d.sessionId);
+  if (!s) return null;
+  if (s.type !== "bastion") return sshSpec(s, { host: s.host, port: s.port, tunnelsOnly: d.tunnelsOnly });
+  const tunnelKey = `bastion:${s.id}`;
+  try {
+    const port = await invoke("bastion_tunnel_start", { key: tunnelKey, name: s.bastion, resourceGroup: s.rg, targetId: s.vm, subscription: s.sub || null });
+    return sshSpec(s, { host: "127.0.0.1", port, hostKeyAlias: `${vmName(s.vm)}.bastion`, tunnelKey, tunnelsOnly: d.tunnelsOnly });
+  } catch {
+    return null;
+  }
+}
+
+/** Reopens last session's tabs, splits and connections. Returns how many tabs came back. */
+async function restoreWorkspace() {
+  const ws = settings.restore_workspace === false ? null : await invoke("workspace_get").catch(() => null);
+  let restored = 0;
+  for (const tree of ws?.tabs ?? []) {
+    const withSpecs = async (n) => {
+      if (n.type === "pane") {
+        const spec = await specFor(n.pane);
+        return spec ? { ...n, spec } : null;
+      }
+      const children = (await Promise.all(n.children.map(withSpecs))).filter(Boolean);
+      return children.length ? { ...n, children } : null;
+    };
+    const t = await withSpecs(tree);
+    if (!t) continue;
+    await openTabTree(t);
+    restored++;
+  }
+  if (restored) activateIndex(Math.min(ws.active ?? 0, restored - 1));
+  if (allTabs().some((p) => p.spec.kind === "ssh" && !p.spec.tunnelsOnly)) toggleFiles(true);
+  return restored;
 }
 
 /**
@@ -307,7 +434,7 @@ function promptPassword(ssh, reason) {
 
 function newDefaultTab() {
   const s = shells[0];
-  if (s) openTab(shellSpec(s));
+  return s ? openTab(shellSpec(s)) : null;
 }
 
 // ------------------------------------------------------------------ dialogs
@@ -423,6 +550,7 @@ $("settings-dialog").addEventListener("close", async () => {
     if (!el.name) continue;
     if (el.type === "checkbox") next[el.name] = el.checked;
     else if (el.type === "number") next[el.name] = Number(el.value);
+    else if (el.name === "line_height") next[el.name] = Number(el.value) || 1;
     else next[el.name] = el.value;
   }
   await saveSettings(next);
@@ -433,6 +561,7 @@ async function saveSettings(next) {
   settings = next;
   setSettings(settings);
   setFontSize(settings.font_size || 14);
+  applyAppearance();
   $("chat-provider").value = settings.chat_provider;
   updateStatus();
   try {
@@ -499,7 +628,9 @@ async function boot() {
     onCursor: (tab) => (positionGhost(tab), positionCompletion(tab)),
     onSent,
     onActivate: (tab) => (updateStatus(), showFilesFor(tab)),
-    onTabsChanged: updateStatus,
+    onTabsChanged: () => (updateStatus(), saveWorkspaceSoon()),
+    onOpenLink: openLink,
+    onOpenPath: openPath,
     onOutput: onTermOutput,
     onCommandStart,
     onCommandDone,
@@ -517,6 +648,13 @@ async function boot() {
   $("check-updates").addEventListener("click", () => checkForUpdate(true));
   initCommandBar();
   initChat();
+  initFind();
+  $("split-right").addEventListener("click", () => splitActive("row"));
+  $("split-down").addEventListener("click", () => splitActive("column"));
+  $("broadcast-btn").addEventListener("click", toggleBroadcast);
+  $("find-btn").addEventListener("click", openFind);
+  $("shortcuts-btn").addEventListener("click", openShortcuts);
+  fillAppearanceOptions();
 
   // A webview reload leaves the previous page's shells and SFTP connections running.
   await Promise.all([invoke("pty_kill_all"), invoke("sftp_disconnect_all"), invoke("bastion_stop_all")]);
@@ -527,6 +665,7 @@ async function boot() {
   ]);
   setSettings(settings);
   setFontSize(settings.font_size || 14);
+  applyAppearance();
   $("chat-provider").value = settings.chat_provider;
   renderShells();
   renderSessions();
@@ -534,7 +673,16 @@ async function boot() {
   updateStatus();
   loadHistory();
   document.body.classList.add("ai-open");
-  newDefaultTab();
+  const restored = await restoreWorkspace();
+  if (!restored) await newDefaultTab();
+  restoring = false;
+  saveWorkspaceSoon();
+}
+
+function fillAppearanceOptions() {
+  const form = $("settings-form").elements;
+  form.terminal_theme.innerHTML = Object.entries(THEMES).map(([k, t]) => `<option value="${k}">${t.name}</option>`).join("");
+  form.font_family.innerHTML = FONTS.map(([v, label]) => `<option value='${v}'>${label}</option>`).join("");
 }
 
 boot();

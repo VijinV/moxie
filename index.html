@@ -56,11 +56,34 @@
         <div id="tabbar">
           <div id="tabs"></div>
           <button id="new-tab" class="icon-btn" title="New tab (Ctrl+Shift+T)">+</button>
+          <div class="tool-group">
+            <button id="split-right" class="tool-btn" title="Split right (Ctrl+Shift+D)">
+              <svg viewBox="0 0 16 16" width="15" height="15"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor"/><line x1="8" y1="2.5" x2="8" y2="13.5" stroke="currentColor"/></svg>
+            </button>
+            <button id="split-down" class="tool-btn" title="Split down (Ctrl+Shift+E)">
+              <svg viewBox="0 0 16 16" width="15" height="15"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor"/><line x1="1.5" y1="8" x2="14.5" y2="8" stroke="currentColor"/></svg>
+            </button>
+            <button id="broadcast-btn" class="tool-btn" title="Broadcast typing to all panes in this tab (Ctrl+Shift+B)">
+              <svg viewBox="0 0 16 16" width="15" height="15"><circle cx="8" cy="8" r="1.6" fill="currentColor"/><path d="M5 5a4.2 4.2 0 0 0 0 6M11 5a4.2 4.2 0 0 1 0 6M3 3a7 7 0 0 0 0 10M13 3a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-linecap="round"/></svg>
+            </button>
+            <button id="find-btn" class="tool-btn" title="Find in terminal (Ctrl+F)">
+              <svg viewBox="0 0 16 16" width="15" height="15"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor"/><line x1="10.3" y1="10.3" x2="14" y2="14" stroke="currentColor" stroke-linecap="round"/></svg>
+            </button>
+          </div>
           <div class="spacer"></div>
           <button id="files-btn" class="pill-btn" title="SFTP file browser (Ctrl+Shift+F)">📁<span class="label">Files</span></button>
           <button id="explain-btn" class="pill-btn" title="Ask AI about the recent output">💡<span class="label">Explain output</span></button>
           <button id="cmdbar-btn" class="pill-btn" title="Ask: runs commands for you and shows the answer (Ctrl+K)">✦<span class="label">Ask</span> <kbd>Ctrl K</kbd></button>
           <button id="toggle-ai" class="pill-btn" title="Toggle AI panel (Ctrl+Shift+A)">◨<span class="label">AI panel</span></button>
+        </div>
+        <div id="find-bar" class="hidden">
+          <input id="find-input" placeholder="Find" spellcheck="false" />
+          <span id="find-count"></span>
+          <button id="find-case" class="find-toggle" title="Match case">Aa</button>
+          <button id="find-regex" class="find-toggle" title="Regular expression">.*</button>
+          <button id="find-prev" class="icon-btn" title="Previous (Shift+Enter)">↑</button>
+          <button id="find-next" class="icon-btn" title="Next (Enter)">↓</button>
+          <button id="find-close" class="icon-btn" title="Close (Esc)">×</button>
         </div>
         <div id="terminals">
           <div id="empty-state">
@@ -78,6 +101,7 @@
           <span id="status-left"></span>
           <span class="spacer"></span>
           <span id="status-ai"></span>
+          <button id="shortcuts-btn" class="status-btn" title="Keyboard shortcuts (Ctrl+/)">⌨ Shortcuts</button>
           <button id="update-pill" class="update-pill hidden"></button>
         </div>
       </main>
@@ -205,6 +229,14 @@
 
     <div id="ctx-menu" class="ctx-menu hidden"></div>
 
+    <dialog id="shortcuts-dialog" class="wide">
+      <form method="dialog">
+        <h2>Keyboard shortcuts</h2>
+        <div class="shortcut-grid"></div>
+        <div class="dialog-actions"><button value="close" class="primary-btn">Close</button></div>
+      </form>
+    </dialog>
+
     <dialog id="settings-dialog">
       <form method="dialog" id="settings-form">
         <h2>Settings</h2>
@@ -266,7 +298,18 @@
         </fieldset>
         <fieldset>
           <legend>Terminal</legend>
-          <label class="port">Font size <input name="font_size" type="number" min="9" max="28" /></label>
+          <div class="row">
+            <label class="grow">Theme <select name="terminal_theme"></select></label>
+            <label class="grow">Font <select name="font_family"></select></label>
+          </div>
+          <div class="row">
+            <label class="port">Font size <input name="font_size" type="number" min="9" max="28" /></label>
+            <label class="port">Line height <input name="line_height" type="number" min="1" max="2" step="0.05" /></label>
+            <label class="grow">Cursor
+              <select name="cursor_style"><option value="block">Block</option><option value="bar">Bar</option><option value="underline">Underline</option></select>
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" name="restore_workspace" /> Reopen my tabs, splits and SSH sessions when Moxie starts</label>
         </fieldset>
         <p class="hint">Prototype note: keys are saved in plain JSON in your config folder.</p>
         <div class="dialog-actions">

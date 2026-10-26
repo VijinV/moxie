@@ -326,3 +326,35 @@ function finishInjection(tab) {
   inj.state = "done";
   inj.buffer = "";
 }
+
+// ------------------------------------------------------------------ fold output
+
+/**
+ * Hides a command's output behind a one-line bar (click it to show the output again).
+ * xterm.js can't remove rows from its buffer, so the space stays; the noise goes.
+ */
+export function toggleFold(tab, block) {
+  if (block.fold) {
+    block.fold.dispose();
+    block.fold = null;
+    return;
+  }
+  const rows = block.endMarker.line - block.outMarker.line;
+  if (rows < 1 || block.outMarker.line < 0) return;
+  const deco = tab.term.registerDecoration({ marker: block.outMarker, x: 0, width: tab.term.cols, height: rows, layer: "top" });
+  if (!deco) return;
+  block.fold = deco;
+  // Overlays only draw for visible rows: bring the folded command into view.
+  tab.term.scrollToLine(Math.max(0, (block.promptMarker ?? block.outMarker).line));
+  deco.onRender((el) => {
+    if (el.dataset.ready) return;
+    el.dataset.ready = "1";
+    el.classList.add("moxie-fold");
+    el.innerHTML = `<div class="fold-bar">▸ ${rows} line${rows > 1 ? "s" : ""} of output folded · click to show</div>`;
+    el.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleFold(tab, block);
+    });
+  });
+}
