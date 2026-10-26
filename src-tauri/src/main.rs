@@ -47,6 +47,7 @@ fn main() {
             sftp::sftp_upload,
             sftp::sftp_open,
             sftp::reveal_local,
+            sftp::open_url,
             bastion::bastion_tunnel_start,
             bastion::bastion_tunnel_stop,
             bastion::bastion_stop_all,

@@ -455,6 +455,15 @@ pub fn open_path(path: &Path) -> Result<(), String> {
     std::process::Command::new(program).arg(path).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
+/// Opens an http(s) link from an AI answer in the default browser.
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("only http(s) links can be opened".into());
+    }
+    open_path(Path::new(&url))
+}
+
 #[tauri::command]
 pub fn reveal_local(path: String) -> Result<(), String> {
     if cfg!(windows) {

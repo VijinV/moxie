@@ -1,6 +1,8 @@
 // AI features: ghost-text autocomplete, Ctrl+K command bar, and the chat panel.
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Marked, Renderer } from "marked";
+import DOMPurify from "dompurify";
 import { activeTab, getContext, sendText, writeRaw, cursorLine, linesFrom, FONT_FAMILY } from "./terminal.js";
 
 let settings = {};
@@ -617,44 +619,34 @@ function scrollChat() {
   log.scrollTop = log.scrollHeight;
 }
 
-// Minimal markdown: fenced code (with action buttons), inline code, bold, headings, lists.
-function renderMarkdown(md) {
-  const parts = md.split("```");
-  return parts
-    .map((part, i) => {
-      if (i % 2 === 1) {
-        const nl = part.indexOf("\n");
-        const lang = nl >= 0 ? part.slice(0, nl).trim() : "";
-        const code = nl >= 0 ? part.slice(nl + 1) : part;
-        return `<div class="code"><div class="code-head"><span>${escapeHtml(lang || "code")}</span>
-          <span class="code-actions"><button data-action="copy">Copy</button><button data-action="insert">Insert</button><button data-action="run" class="run">Run ▶</button></span></div>
-          <pre><code>${escapeHtml(code.replace(/\n$/, ""))}</code></pre></div>`;
-      }
-      return inlineMarkdown(part);
-    })
-    .join("");
+// Full GitHub-flavoured Markdown (tables, lists, headings, links…). Fenced code blocks get
+// Copy / Insert / Run buttons. Output is sanitized: it's model text, so never trust its HTML.
+const md = new Marked({ gfm: true, breaks: true });
+md.use({
+  renderer: {
+    code({ text, lang }) {
+      return `<div class="code"><div class="code-head"><span>${escapeHtml(lang || "code")}</span>
+        <span class="code-actions"><button data-action="copy">Copy</button><button data-action="insert">Insert</button><button data-action="run" class="run">Run ▶</button></span></div>
+        <pre><code>${escapeHtml(text)}</code></pre></div>`;
+    },
+    // Wide tables scroll sideways instead of squashing the panel.
+    table(token) {
+      return `<div class="table-wrap">${Renderer.prototype.table.call(this, token)}</div>`;
+    },
+  },
+});
+
+export function renderMarkdown(text) {
+  return DOMPurify.sanitize(md.parse(text ?? ""), { FORBID_TAGS: ["style", "form", "input", "img"] });
 }
 
-function inlineMarkdown(text) {
-  const blocks = text.split(/\n{2,}/).filter((b) => b.trim());
-  return blocks
-    .map((b) => {
-      const lines = b.split("\n");
-      if (lines.every((l) => /^\s*([-*]|\d+\.)\s/.test(l))) {
-        return `<ul>${lines.map((l) => `<li>${fmt(l.replace(/^\s*([-*]|\d+\.)\s/, ""))}</li>`).join("")}</ul>`;
-      }
-      const h = b.match(/^#{1,4}\s+(.*)$/);
-      if (h && lines.length === 1) return `<h4>${fmt(h[1])}</h4>`;
-      return `<p>${lines.map(fmt).join("<br>")}</p>`;
-    })
-    .join("");
-}
-
-function fmt(s) {
-  return escapeHtml(s)
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
-}
+// Links in answers open in the system browser rather than navigating the app away.
+document.addEventListener("click", (e) => {
+  const a = e.target.closest(".msg a[href]");
+  if (!a) return;
+  e.preventDefault();
+  if (/^https?:\/\//i.test(a.href)) invoke("open_url", { url: a.href });
+});
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { initTerminals, openTab, closeTab, activeTab, allTabs, setFontSize } from "./terminal.js";
 import {
   setSettings, loadHistory, trackInput, onSent, positionGhost, hideSuggestion, acceptSuggestion,
-  requestAiCompletion, initCommandBar, openCommandBar, initChat, sendChat,
+  requestAiCompletion, initCommandBar, openCommandBar, initChat, sendChat, renderMarkdown,
 } from "./ai.js";
 import { initFiles, toggleFiles, showFilesFor, filesOnClose } from "./files.js";
 
@@ -441,5 +441,5 @@ async function boot() {
 }
 
 boot();
-if (import.meta.env.DEV) window.__moxie = { activeTab, allTabs }; // for automated UI tests
+if (import.meta.env.DEV) window.__moxie = { activeTab, allTabs, renderMarkdown }; // for automated UI tests
 window.addEventListener("resize", () => allTabs().forEach(positionGhost));
