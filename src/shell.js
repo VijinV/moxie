@@ -176,7 +176,10 @@ function on133(tab, data) {
   } else if (code === "C") {
     const cmd = si.input ? readInput(tab, si.input, true) : "";
     si.phase = "running";
-    si.current = { cmd, promptMarker: si.promptMarker, outMarker: t.registerMarker(0), started: Date.now() };
+    // PowerShell reports "started" while the cursor is still at the end of the typed line (bash
+    // reports it after the newline): output then begins on the next row.
+    const outOffset = t.buffer.active.cursorX > 0 ? 1 : 0;
+    si.current = { cmd, promptMarker: si.promptMarker, outMarker: t.registerMarker(outOffset), started: Date.now() };
     hooks.onCommandStart?.(tab, si.current);
   } else if (code === "D") {
     const cur = si.current;

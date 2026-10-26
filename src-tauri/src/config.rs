@@ -85,13 +85,79 @@ pub fn load_settings() -> Settings {
 
 #[tauri::command]
 pub fn get_settings() -> Settings {
-    load_settings()
+    let mut s = load_settings();
+    // Keys found in settings.json (older versions) move to the OS credential store.
+    if store_keys(&mut s) {
+        let _ = write_settings(&s);
+    }
+    s
 }
 
 #[tauri::command]
 pub fn save_settings(settings: Settings) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    let mut s = settings;
+    store_keys(&mut s);
+    write_settings(&s)
+}
+
+fn write_settings(s: &Settings) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(s).map_err(|e| e.to_string())?;
     std::fs::write(config_dir().join("settings.json"), json).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------- AI API keys (OS keychain)
+
+const KEY_SERVICE: &str = "moxie-ai";
+
+/// Moves any API key typed into Settings into the OS credential store and blanks it in the
+/// settings file. Returns true if something moved. If the store isn't available, the key stays.
+fn store_keys(s: &mut Settings) -> bool {
+    let mut moved = false;
+    for (provider, field) in [("anthropic", &mut s.anthropic_api_key), ("openai", &mut s.openai_api_key)] {
+        let key = field.trim().to_string();
+        if key.is_empty() {
+            continue;
+        }
+        if let Ok(entry) = keyring::Entry::new(KEY_SERVICE, provider) {
+            if entry.set_password(&key).is_ok() {
+                field.clear();
+                moved = true;
+            }
+        }
+    }
+    moved
+}
+
+/// The API key for a provider: from Settings if one is there, else from the OS credential store.
+pub fn api_key(provider: &str, from_settings: &str) -> Option<String> {
+    let s = from_settings.trim();
+    if !s.is_empty() {
+        return Some(s.to_string());
+    }
+    keyring::Entry::new(KEY_SERVICE, provider).ok()?.get_password().ok().filter(|k| !k.is_empty())
+}
+
+#[derive(Serialize)]
+pub struct KeyStatus {
+    anthropic: bool,
+    openai: bool,
+}
+
+/// Which providers have a key saved (the keys themselves never go back to the UI).
+#[tauri::command]
+pub fn api_keys_status() -> KeyStatus {
+    KeyStatus { anthropic: api_key("anthropic", "").is_some(), openai: api_key("openai", "").is_some() }
+}
+
+#[tauri::command]
+pub fn api_key_delete(provider: String) -> Result<(), String> {
+    if !matches!(provider.as_str(), "anthropic" | "openai") {
+        return Err("unknown provider".into());
+    }
+    if let Ok(entry) = keyring::Entry::new(KEY_SERVICE, &provider) {
+        let _ = entry.delete_credential();
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -191,4 +257,17 @@ pub fn snippets_get() -> serde_json::Value {
 pub fn snippets_save(snippets: serde_json::Value) -> Result<(), String> {
     let json = serde_json::to_string_pretty(&snippets).map_err(|e| e.to_string())?;
     std::fs::write(config_dir().join("snippets.json"), json).map_err(|e| e.to_string())
+}
+
+/// Reads a local text file for the AI's read_file tool (the last `max` bytes if it's large).
+#[tauri::command]
+pub fn fs_read(path: String, max: Option<usize>) -> Result<String, String> {
+    let bytes = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
+    let max = max.unwrap_or(64 * 1024);
+    let slice = if bytes.len() > max { &bytes[bytes.len() - max..] } else { &bytes[..] };
+    let mut text = String::from_utf8_lossy(slice).into_owned();
+    if bytes.len() > max {
+        text = format!("…(showing the last {max} of {} bytes)\n{text}", bytes.len());
+    }
+    Ok(text)
 }

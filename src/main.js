@@ -7,7 +7,7 @@ import {
 import {
   setSettings, loadHistory, trackInput, onSent, positionGhost, hideSuggestion, acceptSuggestion,
   requestAiCompletion, initCommandBar, openCommandBar, initChat, sendChat, renderMarkdown,
-  onTermOutput, onCommandDone, onCommandStart, onBlockMenu, setAiHooks,
+  onTermOutput, onCommandDone, onCommandStart, onBlockMenu, setAiHooks, onPaneActivated,
 } from "./ai.js";
 import { powershellIntegrationArgs, bashIntegrationEnv } from "./shell.js";
 import { updateCompletion, completionKey, positionCompletion, closeCompletion } from "./completion.js";
@@ -678,6 +678,18 @@ $("ssh-dialog").addEventListener("close", async () => {
 
 function openSettings() {
   const form = $("settings-form");
+  // Keys live in the OS keychain: show whether one is saved, never the key itself.
+  invoke("api_keys_status").then((st) => {
+    for (const el of document.querySelectorAll(".key-state")) {
+      const saved = st[el.dataset.key];
+      el.innerHTML = saved ? '· 🔒 saved in Credential Manager <a href="#" class="key-remove">Remove</a>' : "";
+      el.querySelector(".key-remove")?.addEventListener("click", async (e) => {
+        e.preventDefault();
+        await invoke("api_key_delete", { provider: el.dataset.key });
+        el.textContent = "· removed";
+      });
+    }
+  });
   for (const el of form.elements) {
     if (!el.name || !(el.name in settings)) continue;
     if (el.type === "checkbox") el.checked = !!settings[el.name];
@@ -770,7 +782,7 @@ async function boot() {
     onInput: trackInput,
     onCursor: (tab) => (positionGhost(tab), positionCompletion(tab)),
     onSent,
-    onActivate: (tab) => (updateStatus(), showFilesFor(tab), refreshDashboard()),
+    onActivate: (tab) => (updateStatus(), showFilesFor(tab), refreshDashboard(), onPaneActivated(tab)),
     onTabsChanged: () => (updateStatus(), saveWorkspaceSoon()),
     onOpenLink: openLink,
     onOpenPath: openPath,
@@ -786,7 +798,14 @@ async function boot() {
     },
   });
   initFiles({ promptPassword });
-  setAiHooks({ onLineChanged: updateCompletion, onSaveSnippet: openSnippetEditor });
+  setAiHooks({
+    onLineChanged: updateCompletion,
+    onSaveSnippet: openSnippetEditor,
+    sessionName: (id) => {
+      const s = sessions.find((x) => x.id === id);
+      return s ? sessionTitle(s) : "SSH session";
+    },
+  });
   initDashboard();
   initUpdater();
   $("check-updates").addEventListener("click", () => checkForUpdate(true));

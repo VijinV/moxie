@@ -119,7 +119,7 @@
 
       <aside id="ai-panel">
         <div class="ai-header">
-          <span class="ai-title">✦ Assistant</span>
+          <span class="ai-title">✦ Assistant <span id="chat-scope" class="chat-scope" title="Each SSH session has its own chat; local shells share one">Local terminals</span></span>
           <select id="chat-provider" title="Provider">
             <option value="anthropic">Claude API</option>
             <option value="openai">OpenAI API</option>
@@ -128,6 +128,10 @@
           </select>
           <button id="chat-history-btn" class="icon-btn" title="Chat history">🕘</button>
           <button id="chat-clear" class="icon-btn" title="New chat (the current one stays in history)">＋</button>
+        </div>
+        <div class="chat-quick">
+          <button id="qa-summary" class="pill-btn" title="Write a handoff summary of this session from its commands and output">📝 Summarize session</button>
+          <button id="qa-logs" class="pill-btn" title="Describe what you are looking for; the assistant searches the logs read-only">🔎 Search logs</button>
         </div>
         <div id="chat-history" class="hidden"></div>
         <div id="chat-log">
@@ -334,7 +338,7 @@
         </fieldset>
         <fieldset>
           <legend>Claude API</legend>
-          <label>API key <input name="anthropic_api_key" type="password" placeholder="sk-ant-…  (or set ANTHROPIC_API_KEY)" /></label>
+          <label>API key <span class="key-state" data-key="anthropic"></span><input name="anthropic_api_key" type="password" autocomplete="off" placeholder="sk-ant-…  (or set ANTHROPIC_API_KEY)" /></label>
           <div class="row">
             <label class="grow">Chat model <input name="anthropic_model" /></label>
             <label class="grow">Fast model <input name="anthropic_fast_model" /></label>
@@ -348,7 +352,7 @@
         </fieldset>
         <fieldset>
           <legend>OpenAI / compatible API</legend>
-          <label>API key <input name="openai_api_key" type="password" placeholder="sk-…  (or set OPENAI_API_KEY; blank for local servers)" /></label>
+          <label>API key <span class="key-state" data-key="openai"></span><input name="openai_api_key" type="password" autocomplete="off" placeholder="sk-…  (or set OPENAI_API_KEY; blank for local servers)" /></label>
           <div class="row">
             <label class="grow">Chat model <input name="openai_model" /></label>
             <label class="grow">Fast model <input name="openai_fast_model" /></label>
@@ -381,7 +385,7 @@
           </div>
           <label class="check"><input type="checkbox" name="restore_workspace" /> Reopen my tabs, splits and SSH sessions when Moxie starts</label>
         </fieldset>
-        <p class="hint">Prototype note: keys are saved in plain JSON in your config folder.</p>
+        <p class="hint">API keys are stored in Windows Credential Manager (the OS keychain), not in Moxie's settings file. Leave a key field blank to keep the saved key.</p>
         <div class="dialog-actions">
           <button type="button" id="check-updates" class="ghost-btn" style="margin-right:auto">Check for updates</button>
           <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>

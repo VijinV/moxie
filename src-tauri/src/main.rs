@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ai;
+mod ai_tools;
 mod bastion;
 mod chats;
 mod config;
@@ -39,7 +40,12 @@ fn main() {
             config::workspace_save,
             config::snippets_get,
             config::snippets_save,
-            ai::ai_chat,
+            config::api_keys_status,
+            config::api_key_delete,
+            config::fs_read,
+            chats::chats_search,
+            sftp::sftp_read,
+            ai_tools::ai_chat,
             ai::ai_cancel,
             ai::ai_oneshot,
             secrets::secret_set,

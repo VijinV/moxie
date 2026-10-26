@@ -10,12 +10,12 @@
 use crate::config::{load_settings, Settings};
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::StreamExt;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::State;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const ANTHROPIC_VERSION: &str = "2026-10-21";
@@ -31,47 +31,18 @@ pub struct AiState {
     tasks: Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>,
 }
 
-#[derive(Clone, Serialize)]
-struct Chunk {
-    id: String,
-    text: String,
+impl AiState {
+    pub fn track(&self, id: String, handle: tauri::async_runtime::JoinHandle<()>) {
+        self.tasks.lock().unwrap().insert(id, handle);
+    }
+    pub fn forget(&self, id: &str) {
+        self.tasks.lock().unwrap().remove(id);
+    }
 }
 
-#[derive(Clone, Serialize)]
-struct Done {
-    id: String,
-    error: Option<String>,
-}
-
-#[tauri::command]
-pub async fn ai_chat(
-    app: AppHandle,
-    state: State<'_, AiState>,
-    request_id: String,
-    provider: String,
-    system: String,
-    messages: Vec<Msg>,
-) -> Result<(), String> {
-    let settings = load_settings();
-    let task_app = app.clone();
-    let id = request_id.clone();
-    let handle = tauri::async_runtime::spawn(async move {
-        let emit = |text: &str| {
-            let _ = task_app.emit("ai-chunk", Chunk { id: id.clone(), text: text.to_string() });
-        };
-        let result = match provider.as_str() {
-            "anthropic" => anthropic_chat(&settings, &system, &messages, false, Some(&emit)).await,
-            "openai" => openai_chat(&settings, &system, &messages, false, Some(&emit)).await,
-            "claude-cli" | "codex-cli" => {
-                cli_run(&settings, &provider, &flatten_for_cli(&system, &messages), Some(&emit)).await
-            }
-            other => Err(anyhow!("unknown provider: {other}")),
-        };
-        let _ = task_app.emit("ai-done", Done { id: id.clone(), error: result.err().map(|e| format!("{e:#}")) });
-        task_app.state::<AiState>().tasks.lock().unwrap().remove(&id);
-    });
-    state.tasks.lock().unwrap().insert(request_id, handle);
-    Ok(())
+/// Streams a CLI agent's answer (claude -p / codex exec) through `emit`.
+pub async fn cli_text(s: &Settings, provider: &str, prompt: &str, emit: &(dyn Fn(&str) + Send + Sync)) -> Result<String> {
+    cli_run(s, provider, prompt, Some(emit)).await
 }
 
 #[tauri::command]
@@ -149,7 +120,7 @@ fn supports_fallbacks(model: &str) -> bool {
 }
 
 async fn anthropic_chat(s: &Settings, system: &str, messages: &[Msg], fast: bool, emit: Emit<'_>) -> Result<String> {
-    let key = non_empty(&s.anthropic_api_key)
+    let key = crate::config::api_key("anthropic", &s.anthropic_api_key)
         .or_else(|| std::env::var("ANTHROPIC_API_KEY").ok())
         .context("No Anthropic API key — add one in Settings or set ANTHROPIC_API_KEY")?;
     let model = if fast { &s.anthropic_fast_model } else { &s.anthropic_model };
@@ -229,7 +200,7 @@ async fn anthropic_chat(s: &Settings, system: &str, messages: &[Msg], fast: bool
 
 async fn openai_chat(s: &Settings, system: &str, messages: &[Msg], fast: bool, emit: Emit<'_>) -> Result<String> {
     let base = s.openai_base_url.trim_end_matches('/');
-    let key = non_empty(&s.openai_api_key).or_else(|| std::env::var("OPENAI_API_KEY").ok());
+    let key = crate::config::api_key("openai", &s.openai_api_key).or_else(|| std::env::var("OPENAI_API_KEY").ok());
     if key.is_none() && base.contains("api.openai.com") {
         bail!("No OpenAI API key — add one in Settings or set OPENAI_API_KEY");
     }
@@ -294,6 +265,10 @@ fn flatten_for_cli(system: &str, messages: &[Msg]) -> String {
 /// the stripped environment that .app bundles receive when launched from Finder/Dock.
 fn mac_augmented_path() -> String {
     let current = std::env::var("PATH").unwrap_or_default();
+    // Only macOS needs this (and its ':'-separated PATH); on Windows ';' separates entries.
+    if !cfg!(target_os = "macos") {
+        return current;
+    }
     let home = dirs::home_dir().unwrap_or_default();
     let extra: &[&str] = &[
         "/usr/local/bin",

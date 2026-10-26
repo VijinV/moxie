@@ -638,3 +638,23 @@ pub async fn sftp_exec(state: State<'_, SftpState>, conn_id: String, command: St
     };
     tokio::time::timeout(Duration::from_secs(10), run).await.map_err(|_| "timed out".to_string())?
 }
+
+/// Reads a remote text file for the AI's read_file tool (the last `max` bytes if it's large).
+#[tauri::command]
+pub async fn sftp_read(state: State<'_, SftpState>, conn_id: String, path: String, max: Option<u64>) -> Result<String, String> {
+    use tokio::io::AsyncSeekExt;
+    let c = conn(&state, &conn_id)?;
+    let max = max.unwrap_or(64 * 1024);
+    let size = c.sftp.metadata(path.clone()).await.map_err(|e| format!("{path}: {e}"))?.size.unwrap_or(0);
+    let mut f = c.sftp.open(path.clone()).await.map_err(|e| format!("{path}: {e}"))?;
+    if size > max {
+        f.seek(std::io::SeekFrom::Start(size - max)).await.map_err(|e| e.to_string())?;
+    }
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf).await.map_err(|e| e.to_string())?;
+    let mut text = String::from_utf8_lossy(&buf).into_owned();
+    if size > max {
+        text = format!("…(showing the last {max} of {size} bytes)\n{text}");
+    }
+    Ok(text)
+}
