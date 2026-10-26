@@ -46,7 +46,12 @@ pub struct ShellInfo {
 /// Resolves a program through PATH. Windows `.cmd`/`.bat` shims (npm global installs)
 /// can't be executed directly, so they are wrapped in `cmd.exe /c`.
 pub fn resolve_program(program: &str) -> (String, Vec<String>) {
-    let path = which::which(program)
+    resolve_program_in(program, &std::env::var("PATH").unwrap_or_default())
+}
+
+/// Like `resolve_program` but searches `path_str` instead of the process PATH.
+pub fn resolve_program_in(program: &str, path_str: &str) -> (String, Vec<String>) {
+    let path = which::which_in(program, Some(path_str), std::env::current_dir().unwrap_or_default())
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| program.to_string());
     let lower = path.to_lowercase();
