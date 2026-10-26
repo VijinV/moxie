@@ -124,7 +124,7 @@ body:not(.files-open) #files-panel, body:not(.ai-open) #ai-panel { visibility: h
 
 /* ---------------------------------------------------------------- AI panel */
 :root { --chat-form-h: 160px; }
-#ai-panel { background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+#ai-panel { background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; overflow: hidden; position: relative; }
 .ai-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .ai-title { font-weight: 600; color: var(--accent); flex: 1; }
 .ai-header select, fieldset select { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
