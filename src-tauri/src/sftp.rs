@@ -613,3 +613,28 @@ pub async fn sftp_edit(app: AppHandle, state: State<'_, SftpState>, conn_id: Str
     });
     Ok(local.to_string_lossy().into_owned())
 }
+
+/// Runs a command on the server over the panel's SSH connection (not in the terminal) and
+/// returns its output. Used by the server dashboard.
+#[tauri::command]
+pub async fn sftp_exec(state: State<'_, SftpState>, conn_id: String, command: String) -> Result<String, String> {
+    let c = conn(&state, &conn_id)?;
+    let run = async {
+        let mut channel = c.handle.channel_open_session().await.map_err(|e| e.to_string())?;
+        channel.exec(true, command).await.map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                russh::ChannelMsg::Data { ref data } => out.extend_from_slice(data),
+                russh::ChannelMsg::ExtendedData { ref data, .. } => out.extend_from_slice(data),
+                russh::ChannelMsg::Eof | russh::ChannelMsg::Close => break,
+                _ => {}
+            }
+            if out.len() > 512 * 1024 {
+                break;
+            }
+        }
+        Ok::<_, String>(String::from_utf8_lossy(&out).into_owned())
+    };
+    tokio::time::timeout(Duration::from_secs(10), run).await.map_err(|_| "timed out".to_string())?
+}

@@ -17,6 +17,8 @@ import { initUpdater, checkForUpdate } from "./updater.js";
 import { openShortcuts } from "./shortcuts.js";
 import { initFind, openFind } from "./find.js";
 import { THEMES, FONTS } from "./themes.js";
+import { initSnippets, openSnippetEditor, focusSnippets } from "./snippets.js";
+import { initDashboard, refreshDashboard } from "./dashboard.js";
 
 initLayout(); // before boot(): it doesn't need the backend
 
@@ -51,6 +53,7 @@ function onKey(tab, ev) {
   }
   if (ev.ctrlKey && ev.shiftKey) {
     if (key === "b") return toggleBroadcast(), false;
+    if (key === "s") return focusSnippets(), false;
     if (key === "a") return toggleAiPanel(), false;
     if (key === "t") return newDefaultTab(), false;
     if (key === "f") return toggleFiles(), false;
@@ -92,6 +95,7 @@ document.addEventListener("keydown", (ev) => {
   else if (ev.ctrlKey && ev.shiftKey && key === "f") (ev.preventDefault(), toggleFiles());
   else if (ev.ctrlKey && !ev.shiftKey && key === "k" && activeTab()) (ev.preventDefault(), openCommandBar());
   else if (ev.ctrlKey && (ev.key === "/" || ev.code === "Slash")) (ev.preventDefault(), openShortcuts());
+  else if (ev.ctrlKey && ev.shiftKey && key === "s") (ev.preventDefault(), focusSnippets());
 });
 
 function zoom(delta) {
@@ -766,7 +770,7 @@ async function boot() {
     onInput: trackInput,
     onCursor: (tab) => (positionGhost(tab), positionCompletion(tab)),
     onSent,
-    onActivate: (tab) => (updateStatus(), showFilesFor(tab)),
+    onActivate: (tab) => (updateStatus(), showFilesFor(tab), refreshDashboard()),
     onTabsChanged: () => (updateStatus(), saveWorkspaceSoon()),
     onOpenLink: openLink,
     onOpenPath: openPath,
@@ -782,7 +786,8 @@ async function boot() {
     },
   });
   initFiles({ promptPassword });
-  setAiHooks({ onLineChanged: updateCompletion });
+  setAiHooks({ onLineChanged: updateCompletion, onSaveSnippet: openSnippetEditor });
+  initDashboard();
   initUpdater();
   $("check-updates").addEventListener("click", () => checkForUpdate(true));
   initCommandBar();
@@ -809,6 +814,7 @@ async function boot() {
   renderShells();
   renderSessions();
   renderAgents();
+  initSnippets({ setStatus });
   updateStatus();
   loadHistory();
   document.body.classList.add("ai-open");

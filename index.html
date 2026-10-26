@@ -21,6 +21,12 @@
           <ul id="ssh-list" class="list"></ul>
         </section>
 
+        <section class="snippets-section">
+          <h3>Snippets <span><button id="add-snippet" class="icon-btn" title="New snippet or workflow">+</button></span></h3>
+          <input id="snippet-filter" class="filter" placeholder="Filter snippets… (Ctrl+Shift+S)" />
+          <ul id="snippet-list" class="list"></ul>
+        </section>
+
         <section>
           <h3>AI agents</h3>
           <ul id="agent-list" class="list"></ul>
@@ -34,9 +40,14 @@
       <aside id="files-panel">
         <div class="files-header">
           <span class="files-title" id="files-title">SFTP</span>
-          <button class="icon-btn" id="files-close" title="Hide files">×</button>
+          <button class="icon-btn" id="files-close" title="Hide panel">×</button>
         </div>
-        <div class="files-toolbar">
+        <div class="panel-tabs">
+          <button data-view="files" class="on">📁 Files</button>
+          <button data-view="server">📊 Server</button>
+        </div>
+        <div id="dashboard" class="files-only-server"></div>
+        <div class="files-toolbar files-only">
           <button class="icon-btn" data-files="up" title="Parent folder">↑</button>
           <button class="icon-btn" data-files="home" title="Home">⌂</button>
           <button class="icon-btn" data-files="refresh" title="Refresh">⟳</button>
@@ -44,8 +55,8 @@
           <button class="icon-btn" data-files="upload" title="Upload files">⤒</button>
           <button class="icon-btn" data-files="upload-dir" title="Upload a folder">⇪</button>
         </div>
-        <input id="files-path" class="filter" spellcheck="false" />
-        <div id="files-body">
+        <input id="files-path" class="filter files-only" spellcheck="false" />
+        <div id="files-body" class="files-only">
           <div class="files-msg">Open an SSH session to browse its files.</div>
         </div>
         <div id="transfers"></div>
@@ -217,6 +228,40 @@
           <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>
           <button value="save" class="ghost-btn">Save</button>
           <button value="connect" class="primary-btn">Save &amp; connect</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="snippet-dialog">
+      <form method="dialog" id="snippet-form">
+        <h2>Snippet</h2>
+        <input type="hidden" name="id" />
+        <div class="row">
+          <label class="grow">Name <input name="name" required placeholder="Tail service logs" /></label>
+          <label class="grow">Folder <input name="folder" placeholder="optional" /></label>
+        </div>
+        <label>Command(s)
+          <textarea name="command" rows="5" required spellcheck="false" placeholder="journalctl -u {{service:nginx}} -n {{lines:200}} --no-pager"></textarea>
+        </label>
+        <label>Description <input name="description" placeholder="optional" /></label>
+        <label class="check"><input type="checkbox" name="workflow" /> Workflow: run line by line, waiting for each command and stopping if one fails</label>
+        <p class="hint">Use <code>{{name}}</code> or <code>{{name:default}}</code> for values you fill in when running it.</p>
+        <div class="dialog-actions">
+          <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>
+          <button value="save" class="primary-btn">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="snippet-run-dialog">
+      <form method="dialog" id="snippet-run-form">
+        <h2 id="snippet-run-title">Run snippet</h2>
+        <div id="snippet-fields"></div>
+        <pre id="snippet-preview" class="snippet-preview"></pre>
+        <div class="dialog-actions">
+          <button value="cancel" formnovalidate class="ghost-btn">Cancel</button>
+          <button value="insert" class="ghost-btn">Insert</button>
+          <button value="run" class="primary-btn">Run ▶</button>
         </div>
       </form>
     </dialog>

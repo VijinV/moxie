@@ -93,6 +93,7 @@ export function initFiles(opts) {
 
 export function toggleFiles(force) {
   const open = document.body.classList.toggle("files-open", force);
+  document.body.dataset.filesView ??= "files";
   if (open) showFilesFor(activeTab());
   window.dispatchEvent(new Event("resize"));
 }

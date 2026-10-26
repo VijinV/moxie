@@ -177,3 +177,18 @@ pub fn workspace_save(workspace: serde_json::Value) -> Result<(), String> {
     let json = serde_json::to_string(&workspace).map_err(|e| e.to_string())?;
     std::fs::write(config_dir().join("workspace.json"), json).map_err(|e| e.to_string())
 }
+
+/// Saved snippets / workflows (snippets.json).
+#[tauri::command]
+pub fn snippets_get() -> serde_json::Value {
+    std::fs::read_to_string(config_dir().join("snippets.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!([]))
+}
+
+#[tauri::command]
+pub fn snippets_save(snippets: serde_json::Value) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(&snippets).map_err(|e| e.to_string())?;
+    std::fs::write(config_dir().join("snippets.json"), json).map_err(|e| e.to_string())
+}
