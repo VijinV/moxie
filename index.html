@@ -90,8 +90,10 @@
             <option value="claude-cli">Claude Code CLI</option>
             <option value="codex-cli">Codex CLI</option>
           </select>
-          <button id="chat-clear" class="icon-btn" title="New conversation">⟲</button>
+          <button id="chat-history-btn" class="icon-btn" title="Chat history">🕘</button>
+          <button id="chat-clear" class="icon-btn" title="New chat (the current one stays in history)">＋</button>
         </div>
+        <div id="chat-history" class="hidden"></div>
         <div id="chat-log">
           <div class="chat-empty">
             Ask anything about your terminal. Recent output from the active tab is attached automatically.

@@ -2,6 +2,7 @@
 
 mod ai;
 mod bastion;
+mod chats;
 mod config;
 mod pty;
 mod secrets;
@@ -48,6 +49,10 @@ fn main() {
             sftp::sftp_open,
             sftp::reveal_local,
             sftp::open_url,
+            chats::chats_list,
+            chats::chat_load,
+            chats::chat_save,
+            chats::chat_delete,
             bastion::bastion_tunnel_start,
             bastion::bastion_tunnel_stop,
             bastion::bastion_stop_all,

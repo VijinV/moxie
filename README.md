@@ -24,7 +24,7 @@ Moxie needs the WebView2 runtime, which Windows 10/11 already include.
 | SSH sessions | Saved sessions in the sidebar (host, port, user, password, key, extra args). Runs your system OpenSSH client, so `~/.ssh/config`, agents, jump hosts and `known_hosts` all work. A saved password is typed automatically at the login prompt, as in MobaXterm. **Remember** stores it in Windows Credential Manager (OS keychain), never in Moxie's files |
 | Azure Bastion | Session type for VMs reachable only through Azure Bastion: enter the bastion name, resource group and VM resource ID. Moxie opens `az network bastion tunnel` on a free local port and connects the terminal and SFTP through it. Tabs from the same session share one tunnel, which closes with the last tab |
 | SFTP browser | Opens next to every SSH tab (Ctrl+Shift+F). Browse, open files with their default app, upload/download files and whole folders (buttons or drag & drop from Explorer) with progress, rename, new folder, recursive delete, "cd here" in the terminal. Uses the same `known_hosts` trust and key / password / keyboard-interactive login |
-| AI chat panel | Streaming chat that attaches recent terminal output. Code blocks in replies get **Copy / Insert / Run** buttons. **Explain output** diagnoses the last error |
+| AI chat panel | Streaming chat that attaches recent terminal output. Chats are saved automatically: Moxie reopens your last chat on start, and 🕘 History lets you pick up any earlier one (＋ starts a new chat). Code blocks in replies get **Copy / Insert / Run** buttons. **Explain output** diagnoses the last error |
 | Agent mode | On by default (**Auto-run**; switch to *Ask before running* or *Off* in the AI panel): the AI runs commands in the active terminal, reads the output and keeps going until the task is done (up to 25 commands; Stop button). Destructive commands (`rm -rf`, `git push --force`, `DROP TABLE`, `Remove-Item -Recurse`, reboot, …) always ask, even in Auto-run |
 | Ask bar | **Ctrl+K**: ask a question in plain language. Moxie runs the commands it needs and shows the answer in the bar. **Shift+Enter** instead just types a command at the prompt |
 | Autocomplete | Grey suggestion text at the cursor, from your shell history (PSReadLine / bash / zsh) and from AI |
@@ -91,6 +91,7 @@ src-tauri/src/
   sftp.rs      SFTP over russh: connect, host-key checks, browse, transfers
   bastion.rs   Azure Bastion tunnels (az CLI), shared per session
   secrets.rs   SSH passwords in the OS credential store
+  chats.rs     AI chat history (%APPDATA%\moxie\chats)
   config.rs    settings.json and sessions.json (%APPDATA%\moxie), shell history import
 src/
   terminal.js  tabs, xterm.js ↔ PTY wiring

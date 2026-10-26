@@ -336,8 +336,123 @@ function agentMode() {
 const agent = { tab: null, steps: 0, aborted: false, running: false, decide: null, modeOverride: null, onEvent: null };
 const emit = (ev) => agent.onEvent?.(ev);
 
+// The conversation sent to the AI. Each entry is { role, content } plus what's needed to redraw
+// it from history: `display`/`ctx` for typed messages, `step` for agent command output.
 const convo = [];
 let current = null; // { id, text, el, codes }
+
+// ------------------------------------------------------------------ chat history
+
+const newChatMeta = () => ({ id: crypto.randomUUID(), title: "", created: Date.now() });
+let chatMeta = newChatMeta();
+let emptyChatHtml = "";
+
+function chatTitle() {
+  const first = convo.find((m) => m.role === "user" && m.display);
+  const t = (first?.display ?? "New chat").replace(/\s+/g, " ").trim();
+  return t.length > 70 ? t.slice(0, 70) + "…" : t;
+}
+
+async function saveChat() {
+  if (!convo.length) return;
+  chatMeta.title ||= chatTitle();
+  try {
+    await invoke("chat_save", { chat: { ...chatMeta, updated: Date.now(), messages: convo } });
+  } catch (err) {
+    status(`Couldn't save chat: ${err}`, "error");
+  }
+  if (!document.getElementById("chat-history").classList.contains("hidden")) renderHistory();
+}
+
+async function loadChat(id) {
+  const data = await invoke("chat_load", { id });
+  const messages = data.messages ?? [];
+  // A reply that never finished (app closed mid-answer) leaves a dangling user turn.
+  while (messages.length && messages[messages.length - 1].role === "user") messages.pop();
+  chatMeta = { id: data.id, title: data.title ?? "", created: data.created ?? Date.now() };
+  convo.length = 0;
+  convo.push(...messages);
+  renderConvo();
+}
+
+function startNewChat() {
+  chatMeta = newChatMeta();
+  convo.length = 0;
+  renderConvo();
+  document.getElementById("chat-input").focus();
+}
+
+/** Redraws the whole log from `convo` (after loading a chat from history). */
+function renderConvo() {
+  const log = document.getElementById("chat-log");
+  log.innerHTML = convo.length ? "" : emptyChatHtml;
+  for (const m of convo) {
+    if (m.role === "assistant") {
+      const a = document.createElement("div");
+      a.className = "msg assistant";
+      a.innerHTML = renderMarkdown(m.content);
+      log.appendChild(a);
+    } else if (m.step) {
+      const card = stepCard(m.step.cmd, m.step.tab);
+      card.querySelector(".status").textContent = m.step.note ? `· ${m.step.note}` : "· done";
+      card.querySelector("pre").textContent = m.step.output || "(no output)";
+    } else {
+      userBubble(m.display ?? m.content, m.ctx);
+    }
+  }
+  scrollChat();
+}
+
+async function renderHistory() {
+  const box = document.getElementById("chat-history");
+  let chats = [];
+  try {
+    chats = await invoke("chats_list");
+  } catch {}
+  box.innerHTML = `<div class="history-head">Chat history</div>`;
+  if (!chats.length) box.insertAdjacentHTML("beforeend", `<div class="history-empty">No saved chats yet.</div>`);
+  for (const c of chats) {
+    const row = document.createElement("div");
+    row.className = "history-item" + (c.id === chatMeta.id ? " current" : "");
+    row.innerHTML = `<div class="history-text"><div class="history-title"></div><div class="history-meta"></div></div><button class="icon-btn" title="Delete chat">×</button>`;
+    row.querySelector(".history-title").textContent = c.title;
+    row.querySelector(".history-meta").textContent = `${fmtWhen(c.updated)} · ${c.messages} messages`;
+    row.addEventListener("click", async () => {
+      if (chatBusy()) return status("Wait for the current answer to finish.", "error");
+      box.classList.add("hidden");
+      if (c.id !== chatMeta.id) await loadChat(c.id);
+    });
+    row.querySelector("button").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Delete "${c.title}"?`)) return;
+      await invoke("chat_delete", { id: c.id });
+      if (c.id === chatMeta.id && !chatBusy()) startNewChat();
+      renderHistory();
+    });
+    box.appendChild(row);
+  }
+}
+
+function fmtWhen(ms) {
+  const d = new Date(ms);
+  const today = new Date().toDateString() === d.toDateString();
+  return today
+    ? `Today ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`
+    : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+}
+
+function userBubble(text, ctxLabel) {
+  const u = document.createElement("div");
+  u.className = "msg user";
+  u.textContent = text;
+  if (ctxLabel) {
+    const tag = document.createElement("div");
+    tag.className = "ctx-tag";
+    tag.textContent = `📎 ${ctxLabel}`;
+    u.appendChild(tag);
+  }
+  document.getElementById("chat-log").appendChild(u);
+}
 
 export function initChat() {
   const form = document.getElementById("chat-form");
@@ -381,11 +496,26 @@ export function initChat() {
     } catch {}
   });
   document.getElementById("chat-clear").addEventListener("click", () => {
-    if (current) return;
-    convo.length = 0;
-    document.getElementById("chat-log").innerHTML = "";
+    if (chatBusy()) return;
+    document.getElementById("chat-history").classList.add("hidden");
+    startNewChat();
+  });
+  document.getElementById("chat-history-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const box = document.getElementById("chat-history");
+    box.classList.toggle("hidden");
+    if (!box.classList.contains("hidden")) renderHistory();
+  });
+  document.addEventListener("mousedown", (e) => {
+    if (!e.target.closest("#chat-history, #chat-history-btn")) document.getElementById("chat-history").classList.add("hidden");
   });
   document.getElementById("chat-log").addEventListener("click", codeBlockAction);
+
+  // Pick up where you left off: reopen the most recent chat.
+  emptyChatHtml = document.getElementById("chat-log").innerHTML;
+  invoke("chats_list")
+    .then((chats) => chats[0] && !convo.length && loadChat(chats[0].id))
+    .catch(() => {});
 
   listen("ai-chunk", (e) => {
     if (!current || e.payload.id !== current.id) return;
@@ -412,12 +542,13 @@ function codeBlockAction(e) {
 export const chatBusy = () => !!current || agent.running || !!agent.decide;
 
 /**
- * `fromAgent`: text is command output fed back by the agent loop (shown as a step card instead).
- * `opts.mode` / `opts.onEvent`: see `agent` above.
+ * `fromAgent`: text is command output fed back by the agent loop (shown as a step card instead;
+ * `opts.step` records it for history). `opts.mode` / `opts.onEvent`: see `agent` above.
  */
 export async function sendChat(text, withContext, fromAgent = false, opts = {}) {
   const log = document.getElementById("chat-log");
   log.querySelector(".chat-empty")?.remove();
+  document.getElementById("chat-history").classList.add("hidden");
   if (!fromAgent) {
     Object.assign(agent, { tab: activeTab(), steps: 0, aborted: false, modeOverride: opts.mode ?? null, onEvent: opts.onEvent ?? null });
   }
@@ -426,19 +557,12 @@ export async function sendChat(text, withContext, fromAgent = false, opts = {}) 
   const content = ctx
     ? `${text}\n\n<terminal_output shell="${shellLabel(tab)}">\n${ctx}\n</terminal_output>`
     : text;
-  convo.push({ role: "user", content });
-
-  if (!fromAgent) {
-    const u = document.createElement("div");
-    u.className = "msg user";
-    u.textContent = text;
-    if (ctx) {
-      const tag = document.createElement("div");
-      tag.className = "ctx-tag";
-      tag.textContent = `📎 ${tab.spec.title} output`;
-      u.appendChild(tag);
-    }
-    log.appendChild(u);
+  if (fromAgent) {
+    convo.push({ role: "user", content, step: opts.step });
+  } else {
+    const ctxLabel = ctx ? `${tab.spec.title} output` : null;
+    convo.push({ role: "user", content, display: text, ctx: ctxLabel });
+    userBubble(text, ctxLabel);
   }
 
   const a = document.createElement("div");
@@ -455,7 +579,7 @@ export async function sendChat(text, withContext, fromAgent = false, opts = {}) 
       requestId: current.id,
       provider,
       system: CHAT_SYSTEM(),
-      messages: convo,
+      messages: convo.map(({ role, content }) => ({ role, content })),
     });
   } catch (err) {
     finishChat(String(err));
@@ -473,6 +597,7 @@ function finishChat(error, cancelled = false) {
   current = null;
   setBusy(false);
   scrollChat();
+  saveChat();
 
   const cmd = !error && !cancelled && agentMode() !== "off" ? extractRunBlock(text) : null;
   if (cmd) return runAgentStep(cmd);
@@ -515,7 +640,7 @@ async function runAgentStep(cmd) {
 
   emit({ type: "run", cmd });
   setBusy(true);
-  const card = stepCard(cmd, tab);
+  const card = stepCard(cmd, tab.spec.title);
   agent.running = true;
   const { output, note } = await runAndCapture(tab, cmd).finally(() => (agent.running = false));
   card.querySelector(".status").textContent = note ? `· ${note}` : "· done";
@@ -527,6 +652,7 @@ async function runAgentStep(cmd) {
     `<command_output command=${JSON.stringify(cmd)}${note ? ` note=${JSON.stringify(note)}` : ""}>\n${clipped}\n</command_output>`,
     false,
     true,
+    { step: { cmd, output: clipped, note, tab: tab.spec.title } },
   );
 }
 
@@ -589,12 +715,12 @@ function confirmRun(cmd, tab, dangerous) {
   });
 }
 
-function stepCard(cmd, tab) {
+function stepCard(cmd, tabTitle) {
   const d = document.createElement("details");
   d.className = "agent-step";
   d.innerHTML = `<summary>▶ <code></code><span class="status">· running in </span></summary><pre></pre>`;
   d.querySelector("code").textContent = cmd.length > 80 ? cmd.slice(0, 80) + "…" : cmd;
-  d.querySelector(".status").textContent += tab.spec.title + "…";
+  d.querySelector(".status").textContent += (tabTitle ?? "terminal") + "…";
   document.getElementById("chat-log").appendChild(d);
   scrollChat();
   return d;

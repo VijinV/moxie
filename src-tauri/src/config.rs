@@ -52,7 +52,7 @@ impl Default for Settings {
     }
 }
 
-fn config_dir() -> PathBuf {
+pub fn config_dir() -> PathBuf {
     let dir = dirs::config_dir().unwrap_or_else(std::env::temp_dir).join("moxie");
     let _ = std::fs::create_dir_all(&dir);
     dir
