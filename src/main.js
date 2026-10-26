@@ -6,6 +6,9 @@ import {
   requestAiCompletion, initCommandBar, openCommandBar, initChat, sendChat, renderMarkdown,
 } from "./ai.js";
 import { initFiles, toggleFiles, showFilesFor, filesOnClose } from "./files.js";
+import { initLayout } from "./layout.js";
+
+initLayout(); // before boot(): it doesn't need the backend
 
 let settings = {};
 let shells = [];
