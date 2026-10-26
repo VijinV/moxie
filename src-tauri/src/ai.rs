@@ -290,6 +290,39 @@ fn flatten_for_cli(system: &str, messages: &[Msg]) -> String {
     out
 }
 
+/// Returns a PATH string that includes common macOS CLI install locations missing from
+/// the stripped environment that .app bundles receive when launched from Finder/Dock.
+fn mac_augmented_path() -> String {
+    let current = std::env::var("PATH").unwrap_or_default();
+    let home = dirs::home_dir().unwrap_or_default();
+    let extra: &[&str] = &[
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/sbin",
+    ];
+    let home_extras = [
+        home.join(".npm-global/bin"),
+        home.join(".local/bin"),
+        home.join(".cargo/bin"),
+        home.join(".volta/bin"),
+        home.join(".nvm/versions/node").join("current").join("bin"),
+    ];
+    let mut parts: Vec<String> = current.split(':').map(str::to_string).collect();
+    for e in extra {
+        if !parts.iter().any(|p| p == *e) {
+            parts.push(e.to_string());
+        }
+    }
+    for e in &home_extras {
+        let s = e.to_string_lossy().to_string();
+        if !parts.iter().any(|p| p == &s) {
+            parts.push(s);
+        }
+    }
+    parts.join(":")
+}
+
 /// Runs `claude -p` / `codex exec -` with the prompt on stdin (avoids shell-quoting the prompt)
 /// and streams stdout back.
 async fn cli_run(s: &Settings, provider: &str, prompt: &str, emit: Emit<'_>) -> Result<String> {
@@ -298,14 +331,23 @@ async fn cli_run(s: &Settings, provider: &str, prompt: &str, emit: Emit<'_>) -> 
         _ => ("codex", &s.codex_cli_path, &["exec", "--skip-git-repo-check", "-"]),
     };
     let program = non_empty(custom).unwrap_or_else(|| name.to_string());
-    if non_empty(custom).is_none() && which::which(name).is_err() {
-        bail!("`{name}` CLI not found on PATH — install it or set its path in Settings");
+
+    // macOS .app bundles launch with a stripped PATH. Augment it with the locations
+    // where npm/Homebrew/nvm/volta typically install global CLIs so which::which works.
+    let mac_path = mac_augmented_path();
+
+    if non_empty(custom).is_none() {
+        let found = which::which_in(name, Some(&mac_path), std::env::current_dir().unwrap_or_default()).is_ok();
+        if !found {
+            bail!("`{name}` CLI not found on PATH — install it or set its path in Settings");
+        }
     }
-    let (exe, prefix) = crate::pty::resolve_program(&program);
+    let (exe, prefix) = crate::pty::resolve_program_in(&program, &mac_path);
 
     let mut cmd = tokio::process::Command::new(exe);
     cmd.args(prefix)
         .args(args)
+        .env("PATH", &mac_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
