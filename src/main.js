@@ -11,6 +11,7 @@ import { updateCompletion, completionKey, positionCompletion, closeCompletion } 
 import { initFiles, toggleFiles, showFilesFor, filesOnClose } from "./files.js";
 import { initLayout } from "./layout.js";
 import { initUpdater, checkForUpdate } from "./updater.js";
+import { initMonitor, setMonitorTab } from "./monitor.js";
 
 initLayout(); // before boot(): it doesn't need the backend
 
@@ -490,7 +491,7 @@ $("explain-btn").addEventListener("click", () => {
 });
 $("chat-provider").addEventListener("change", (e) => saveSettings({ ...settings, chat_provider: e.target.value }));
 
-// ------------------------------------------------------------------ boot
+//------------------------------------------------------------------ boot
 
 async function boot() {
   initTerminals({
@@ -498,7 +499,7 @@ async function boot() {
     onInput: trackInput,
     onCursor: (tab) => (positionGhost(tab), positionCompletion(tab)),
     onSent,
-    onActivate: (tab) => (updateStatus(), showFilesFor(tab)),
+    onActivate: (tab) => (updateStatus(), showFilesFor(tab), setMonitorTab(tab)),
     onTabsChanged: updateStatus,
     onOutput: onTermOutput,
     onCommandStart,
@@ -512,6 +513,7 @@ async function boot() {
     },
   });
   initFiles({ promptPassword });
+  initMonitor();
   setAiHooks({ onLineChanged: updateCompletion });
   initUpdater();
   $("check-updates").addEventListener("click", () => checkForUpdate(true));

@@ -61,6 +61,7 @@
           <button id="explain-btn" class="pill-btn" title="Ask AI about the recent output">💡<span class="label">Explain output</span></button>
           <button id="cmdbar-btn" class="pill-btn" title="Ask: runs commands for you and shows the answer (Ctrl+K)">✦<span class="label">Ask</span> <kbd>Ctrl K</kbd></button>
           <button id="toggle-ai" class="pill-btn" title="Toggle AI panel (Ctrl+Shift+A)">◨<span class="label">AI panel</span></button>
+          <button id="monitor-btn" class="pill-btn" title="Activity monitor">▣<span class="label"> Monitor</span></button>
         </div>
         <div id="terminals">
           <div id="empty-state">
@@ -73,6 +74,15 @@
               <kbd>Ctrl Shift A</kbd> AI panel
             </p>
           </div>
+        </div>
+        <div id="monitor-panel">
+          <div id="monitor-resize-handle"></div>
+          <div class="mon-header">
+            <span class="mon-title">▣ Activity Monitor</span>
+            <span id="monitor-host" class="mon-muted"></span>
+            <button class="icon-btn" id="monitor-close" title="Close">×</button>
+          </div>
+          <div id="monitor-body"></div>
         </div>
         <div id="statusbar">
           <span id="status-left"></span>
