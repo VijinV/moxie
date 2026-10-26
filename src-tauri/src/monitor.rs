@@ -94,9 +94,9 @@ pub fn get_stats(state: State<'_, MonitorState>) -> Stats {
 
 struct RemoteConn {
     handle: client::Handle<ssh_conn::Client>,
-    // prev /proc/stat values for CPU% delta
-    prev_cpu: Option<(u64, u64)>,       // (idle, total)
-    prev_net: Option<(u64, u64, Instant)>, // (rx, tx, time)
+    _jump: Option<client::Handle<ssh_conn::Client>>,
+    prev_cpu: Option<(u64, u64)>,
+    prev_net: Option<(u64, u64, Instant)>,
 }
 
 #[derive(Default)]
@@ -225,15 +225,48 @@ pub async fn get_remote_stats(
     user: String,
     key_path: String,
     secret_key: Option<String>,
+    jump: Option<String>,
+    jump_key_path: Option<String>,
+    jump_secret_key: Option<String>,
 ) -> Result<Stats, String> {
-    let key = format!("{user}@{host}:{port}");
+    let key = format!("{user}@{host}:{port}{}", jump.as_deref().map(|j| format!(" via {j}")).unwrap_or_default());
     let password = secret_key.as_deref().and_then(crate::secrets::get);
+    let target_port = port;
 
     let mut cache = state.1.lock().await;
 
     if !cache.conns.contains_key(&key) {
-        let handle = ssh_conn::connect(&host, port, &user, &key_path, password.as_deref(), None, None).await?;
-        cache.conns.insert(key.clone(), RemoteConn { handle, prev_cpu: None, prev_net: None });
+        let jump_key = jump_key_path.as_deref().filter(|k| !k.is_empty());
+        let jump_password = jump_secret_key.as_deref().and_then(crate::secrets::get);
+
+        let (handle, _jump) = if let Some(ref spec) = jump.filter(|j| !j.trim().is_empty()) {
+            let (mut h, jh) = ssh_conn::connect_via_jump(
+                spec,
+                &host,
+                target_port,
+                &host,
+                target_port,
+                None,
+                &user,
+                &key_path,
+                password.as_deref(),
+                jump_key,
+                jump_password.as_deref(),
+            )
+            .await?;
+            let ok = ssh_conn::authenticate(&mut h, &user, &key_path, password.as_deref())
+                .await
+                .map_err(|e| format!("authentication error: {e}"))?;
+            if !ok {
+                return Err(if password.is_some() { "AUTH_FAILED".into() } else { "AUTH_NEED_PASSWORD".into() });
+            }
+            (h, Some(jh))
+        } else {
+            let h = ssh_conn::connect(&host, target_port, &user, &key_path, password.as_deref(), None, None).await?;
+            (h, None)
+        };
+
+        cache.conns.insert(key.clone(), RemoteConn { handle, _jump, prev_cpu: None, prev_net: None });
     }
 
     let cmd = "{ cat /proc/stat | head -1; echo SPLIT; free -b 2>/dev/null; echo SPLIT; cat /proc/loadavg; echo SPLIT; ps --no-headers -eo comm,pcpu,rss --sort=-pcpu 2>/dev/null | head -10; echo SPLIT; cat /proc/net/dev 2>/dev/null; }";

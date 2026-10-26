@@ -77,6 +77,9 @@ async function poll() {
         user: ssh.user ?? "",
         keyPath: ssh.key ?? "",
         secretKey: ssh.secretKey ?? null,
+        jump: ssh.jump ?? null,
+        jumpKeyPath: ssh.jumpKey ?? "",
+        jumpSecretKey: ssh.jumpSecretKey ?? null,
       });
     } else {
       stats = await invoke("get_stats");

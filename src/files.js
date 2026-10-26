@@ -149,6 +149,8 @@ async function connect(tab, trust = null) {
       trust,
       knownHostAlias: s.hostKeyAlias ?? null,
       jump: s.jump ?? null,
+      jumpKeyPath: s.jumpKey ?? "",
+      jumpSecretKey: s.jumpSecretKey ?? null,
     });
     f.home = home;
     f.status = "ready";

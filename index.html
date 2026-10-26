@@ -226,6 +226,13 @@
           <label class="check remember"><input type="checkbox" name="remember" checked /> Remember</label>
         </div>
         <label data-for="ssh">Jump host (optional) <input name="jump" placeholder="user@bastion.example.com:22 — terminal and SFTP go through it" /></label>
+        <div id="jump-creds-section" data-for="ssh" class="jump-creds hidden">
+          <label>Jump host key (optional) <input name="jump_key" placeholder="~/.ssh/bastion_key — leave blank to use the same key as the target" /></label>
+          <div class="row">
+            <label class="grow">Jump host password (optional) <input name="jump_password" type="password" autocomplete="off" placeholder="optional" /></label>
+            <label class="check remember"><input type="checkbox" name="jump_remember" checked /> Remember</label>
+          </div>
+        </div>
         <label data-for="ssh bastion">Private key (optional) <input name="key" placeholder="C:\Users\you\.ssh\id_ed25519 — defaults to ~/.ssh/id_*" /></label>
         <label data-for="ssh bastion">Port forwarding (optional, one per line)
           <textarea name="forwards" rows="2" spellcheck="false" placeholder="L 5432:localhost:5432   (your :5432 → server's localhost:5432)&#10;R 8080:localhost:3000   (server :8080 → your :3000) · D 1080 (SOCKS proxy)"></textarea>
