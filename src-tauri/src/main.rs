@@ -5,6 +5,7 @@ mod ai_tools;
 mod bastion;
 mod chats;
 mod config;
+mod editor;
 mod import;
 mod monitor;
 mod pty;
@@ -46,6 +47,8 @@ fn main() {
             config::api_keys_status,
             config::api_key_delete,
             config::fs_read,
+            editor::editor_read,
+            editor::editor_write,
             chats::chats_search,
             sftp::sftp_read,
             ai_tools::ai_chat,

@@ -10,10 +10,10 @@ Get the latest Windows build from **[Releases](https://github.com/VijinV/term/re
 
 | File | Use it when |
 | --- | --- |
-| [`Moxie_0.3.0_x64-setup.exe`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.3.0_x64-setup.exe) | Normal install (Start menu entry, uninstaller). Recommended |
-| [`Moxie_0.3.0_x64_en-US.msi`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.3.0_x64_en-US.msi) | Managed / IT deployment |
+| [`Moxie_0.3.2_x64-setup.exe`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.3.2_x64-setup.exe) | Normal install (Start menu entry, uninstaller). Recommended |
+| [`Moxie_0.3.2_x64_en-US.msi`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.3.2_x64_en-US.msi) | Managed / IT deployment |
 
-From 0.2.0 on, Moxie updates itself (⬆ Update in the status bar). The installers aren't code-signed yet, so Windows SmartScreen warns on first run; choose **More info → Run anyway**.
+From 0.2.0 on, Moxie updates itself: when a new version is out it offers **Update now** (and ⬆ in the status bar). The installers aren't code-signed yet, so Windows SmartScreen warns on first run; choose **More info → Run anyway**.
 Moxie needs the WebView2 runtime, which Windows 10/11 already include.
 
 ## Features
@@ -27,7 +27,7 @@ Moxie needs the WebView2 runtime, which Windows 10/11 already include.
 | Command blocks | Shell integration marks every command: a green/red bar with its exit code; click it to copy the command or output, fold the output, explain it, save it as a snippet or run it again. **Ctrl+Shift+↑/↓** jumps between commands. Works in PowerShell, Git Bash, WSL and on SSH servers with bash or zsh (added invisibly at login; can be turned off per session) |
 | Error detection | When a command fails, a chip offers **✦ Explain & fix** for exactly that command and its output |
 | Find | **Ctrl+F**: highlights every match, with match count, case and regex toggles |
-| Links & paths | **Ctrl+click** a URL to open it in the browser, or a file path to open it (locally in Explorer; on SSH tabs in the SFTP panel) |
+| Links & paths | **Ctrl+click** a URL to open it in the browser, or a file path to open it in the editor (folders open in Explorer or the SFTP panel) |
 | Broadcast typing | Multi-exec: type once into every pane of the tab, or into every open terminal (toolbar 📡 / **Ctrl+Shift+B**, cycles off → this tab → all tabs) |
 | Themes & fonts | 8 colour schemes, font, size (**Ctrl+= / Ctrl+-**), line height, cursor style |
 | Workspace restore | Tabs, splits and SSH sessions reopen when Moxie starts (can be turned off in Settings) |
@@ -37,23 +37,24 @@ Moxie needs the WebView2 runtime, which Windows 10/11 already include.
 
 | Feature | What it does |
 | --- | --- |
+| Session look | Per session: a colour, an icon (preset or any emoji) and tags, shown in the sidebar and on its tabs. Filter with `#tag` |
 | SSH sessions | Saved sessions in folders (host, port, user, password, key, jump host, port forwards). Uses your system OpenSSH, so `~/.ssh/config`, agents and `known_hosts` work. Saved passwords are typed at the login prompt (also both prompts through a jump host) and kept in Windows Credential Manager |
 | Import | **⇩** in the sidebar imports from `~/.ssh/config`, MobaXterm (`MobaXterm.ini` or an exported `.mxtsessions`, with folders) and PuTTY, with a preview before anything is added |
 | Jump hosts | Terminal and SFTP both go through the jump host, with separate host-key checks for each |
 | RDP & VNC | Session types that open Windows Remote Desktop or an installed VNC viewer (TigerVNC, RealVNC, TightVNC, UltraVNC) |
 | Azure Bastion | Connects through `az network bastion tunnel` (see below); terminal and SFTP share one tunnel |
 | Port forwarding | Per session: `L 5432:localhost:5432`, `R 8080:localhost:3000`, `D 1080`. **🔌** starts just the forwards, without a shell |
-| SFTP panel | Next to every SSH tab (**Ctrl+Shift+F**): browse, upload/download files and folders (drag & drop from Explorer), rename, delete, **Edit** (opens your editor; every save uploads back) |
-| Server dashboard | The panel's **Server** tab: CPU, load, memory, swap, disks, uptime and top processes, refreshed every 4 s over the panel's own connection |
-| Activity monitor | **▣ Monitor** in the toolbar: a resizable bottom panel with CPU (per core), memory, swap, network and top processes for this PC, or for the server on SSH tabs |
+| SFTP panel | Next to every SSH tab (**Ctrl+Shift+F**): browse, upload/download files and folders (drag & drop from Explorer), rename, delete. Double-click a file to edit it in Moxie; right-click for your external editor (every save uploads back) or the default app |
+| Built-in editor | Like MobaTextEditor: remote files (over the SFTP connection) and local ones open over the terminal area, with syntax highlighting, tabs, find & replace. **Ctrl+S** saves straight back, keeping line endings, owner and permissions; a file changed on the server since you opened it isn't overwritten without asking. **Ctrl+Shift+O** switches between editor and terminal. Text files up to 5 MB |
+| Activity monitor | **▣ Monitor** in the toolbar: a resizable bottom panel with host, OS, uptime, CPU (per core), load, memory, swap, disks, network and top processes, for this PC or for the server on SSH tabs. On SSH tabs it reuses the SFTP connection, so it also works through jump hosts and Azure Bastion |
 | Snippets & workflows | Saved commands in the sidebar (**Ctrl+Shift+S**) with `{{name:default}}` placeholders. Workflows run line by line, wait for each command and stop at the first failure |
 
 ### AI
 
 | Feature | What it does |
 | --- | --- |
-| Chat panel | Streaming answers rendered as Markdown; code blocks get **Copy / Insert / Run** |
-| Agent with tools | With the Claude or OpenAI API the assistant uses real tool calls: run a command, read a file, list a folder (on the server for SSH tabs), then keeps going until the task is done. *Auto-run* by default; *Ask before running* or *Off* in the panel. Destructive commands (`rm -rf`, `git push --force`, `DROP TABLE`, reboot, …) always ask first. The Claude Code / Codex CLIs do the same through a text protocol |
+| Chat panel | Streaming answers rendered as Markdown; code blocks get **Copy / Insert / Run**. **⤢ Full view** (**Ctrl+Shift+M**) hides the terminal and gives the chat the whole window |
+| Agent with tools | With the Claude or OpenAI API the assistant uses real tool calls: run a command, read a file, list a folder (on the server for SSH tabs), then keeps going until the task is done. *Auto-run* by default; *Ask before running* or *Off* in the panel. Anything that deletes (`rm`, `del`, `Remove-Item`, `find -delete`, `docker rm`, `DELETE FROM`, …) or is otherwise destructive (`git push --force`, `DROP TABLE`, reboot, …) always asks first, in every mode, including **Run ▶** on a suggested command. The Claude Code / Codex CLIs do the same through a text protocol |
 | Server-aware | The assistant is told the active terminal's OS, distribution, shell, user, host and folder |
 | One chat per SSH session | Each SSH session keeps its own chat; reopening that session brings it back. Local shells share one chat |
 | Chat history & search | Chats are saved automatically; 🕘 History lists them and searches their full text |
@@ -96,7 +97,10 @@ Press **Ctrl+/** (or **⌨ Shortcuts** in the status bar) for the full list in t
 | Tab · ↓/↑ · Esc | Autocomplete menu: accept · choose · close |
 | → or End | Accept the grey inline suggestion |
 | Ctrl+Space | Ask the AI to complete the line |
-| Ctrl+Shift+A / F / S | AI panel / files & server panel / snippets |
+| Ctrl+Shift+A / F / S | AI panel / SFTP panel / snippets |
+| Ctrl+Shift+M | Chat full view |
+| Ctrl+Shift+O | Editor / terminal |
+| Ctrl+Shift+L | Collapse the sidebar to icons / expand it |
 | Ctrl+Shift+T / W | New tab / close pane |
 | Ctrl+Shift+C / V | Copy / paste |
 | Ctrl+= / Ctrl+- | Font size |
@@ -148,6 +152,7 @@ src-tauri/src/
   sftp.rs       SFTP over russh: jump hosts, host keys, transfers, edit & upload, remote exec
   ssh_conn.rs   shared russh connect / host-key / auth helpers
   monitor.rs    local and remote CPU, memory, network and process stats
+  editor.rs     built-in editor: read/save text files, local or over SFTP
   bastion.rs    Azure Bastion tunnels (az CLI)
   import.rs     session import (ssh config, MobaXterm, PuTTY), RDP / VNC launchers
   secrets.rs    SSH passwords in the OS credential store
@@ -158,8 +163,9 @@ src/
   shell.js      shell integration: hooks, command blocks, exit codes, folding, SSH injection
   completion.js autocomplete menu
   ai.js         inline suggestions, Ask bar, chat panel, agent & tools, per-session chats
-  files.js      SFTP panel          dashboard.js  server dashboard
+  files.js      SFTP panel
   monitor.js    activity monitor panel
+  editor.js     built-in editor (CodeMirror)
   snippets.js   snippets & workflows  find.js     find bar
   themes.js     colour schemes        shortcuts.js  shortcut reference
   updater.js    auto-update           layout.js     resizable side panels

@@ -511,7 +511,16 @@ pub async fn sftp_edit(app: AppHandle, state: State<'_, SftpState>, conn_id: Str
 /// returns its output. Used by the server dashboard.
 #[tauri::command]
 pub async fn sftp_exec(state: State<'_, SftpState>, conn_id: String, command: String) -> Result<String, String> {
-    let c = conn(&state, &conn_id)?;
+    exec_on(&state, &conn_id, &command).await
+}
+
+pub fn is_connected(state: &SftpState, conn_id: &str) -> bool {
+    state.conns.lock().unwrap().contains_key(conn_id)
+}
+
+/// Runs a command over an open panel connection (also used by the activity monitor).
+pub async fn exec_on(state: &SftpState, conn_id: &str, command: &str) -> Result<String, String> {
+    let c = conn(state, conn_id)?;
     let run = async {
         let mut channel = c.handle.channel_open_session().await.map_err(|e| e.to_string())?;
         channel.exec(true, command).await.map_err(|e| e.to_string())?;
@@ -550,4 +559,41 @@ pub async fn sftp_read(state: State<'_, SftpState>, conn_id: String, path: Strin
         text = format!("…(showing the last {max} of {size} bytes)\n{text}");
     }
     Ok(text)
+}
+
+// ---------------------------------------------------------------- built-in editor
+
+/// Whole file plus its modification time (seconds), for the built-in editor.
+pub async fn read_whole(state: &SftpState, conn_id: &str, path: &str, max: u64) -> Result<(Vec<u8>, u64), String> {
+    let c = conn(state, conn_id)?;
+    let meta = c.sftp.metadata(path.to_string()).await.map_err(|e| format!("{path}: {e}"))?;
+    if meta.is_dir() {
+        return Err(format!("{path} is a folder"));
+    }
+    let size = meta.size.unwrap_or(0);
+    if size > max {
+        return Err(format!("TOO_LARGE:{size}"));
+    }
+    let mut f = c.sftp.open(path.to_string()).await.map_err(|e| format!("{path}: {e}"))?;
+    let mut buf = Vec::with_capacity(size as usize);
+    f.read_to_end(&mut buf).await.map_err(|e| e.to_string())?;
+    Ok((buf, meta.mtime.unwrap_or(0) as u64))
+}
+
+pub async fn mtime_of(state: &SftpState, conn_id: &str, path: &str) -> Result<Option<u64>, String> {
+    let c = conn(state, conn_id)?;
+    Ok(c.sftp.metadata(path.to_string()).await.ok().map(|m| m.mtime.unwrap_or(0) as u64))
+}
+
+/// Overwrites in place (keeps the file's owner and permissions) and returns the new mtime.
+pub async fn write_whole(state: &SftpState, conn_id: &str, path: &str, bytes: &[u8]) -> Result<u64, String> {
+    let c = conn(state, conn_id)?;
+    let mut f = c
+        .sftp
+        .open_with_flags(path.to_string(), OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE)
+        .await
+        .map_err(|e| format!("{path}: {e}"))?;
+    f.write_all(bytes).await.map_err(|e| e.to_string())?;
+    f.shutdown().await.map_err(|e| e.to_string())?;
+    Ok(mtime_of(state, conn_id, path).await?.unwrap_or(0))
 }

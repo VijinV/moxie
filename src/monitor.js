@@ -54,21 +54,20 @@ export function toggleMonitor(force) {
   }
 }
 
-function updateHostLabel() {
+/** "user@server · Ubuntu 24.04 · up 3d 4h" once stats arrive (`s`), just the target before. */
+function updateHostLabel(s) {
   const el = $("monitor-host");
   if (!el) return;
   const ssh = activeTab?.spec?.ssh;
-  if (ssh) {
-    el.textContent = `${ssh.user ? ssh.user + "@" : ""}${ssh.label ?? ssh.host}`;
-  } else {
-    el.textContent = "local machine";
-  }
+  const who = ssh ? `${ssh.user ? ssh.user + "@" : ""}${ssh.label ?? ssh.host}` : s?.host ? `${s.host} (this PC)` : "this PC";
+  el.textContent = [who, s?.os, s?.uptime ? `up ${fmtUptime(s.uptime)}` : ""].filter(Boolean).join("  ·  ");
 }
 
 async function poll() {
   if (!isOpen) return;
   try {
-    const ssh = activeTab?.spec?.ssh;
+    const tab = activeTab;
+    const ssh = tab?.spec?.ssh;
     let stats;
     if (ssh) {
       stats = await invoke("get_remote_stats", {
@@ -77,13 +76,13 @@ async function poll() {
         user: ssh.user ?? "",
         keyPath: ssh.key ?? "",
         secretKey: ssh.secretKey ?? null,
-        jump: ssh.jump ?? null,
-        jumpKeyPath: ssh.jumpKey ?? "",
-        jumpSecretKey: ssh.jumpSecretKey ?? null,
+        // The SFTP panel's connection when it has one: it already went through jump hosts / Bastion.
+        connId: tab.files?.status === "ready" ? tab.files.connId : null,
       });
     } else {
       stats = await invoke("get_stats");
     }
+    if (tab !== activeTab) return; // switched tabs while this poll was in flight
     render(stats);
   } catch (e) {
     const body = $("monitor-body");
@@ -114,7 +113,13 @@ function fmtMem(bytes) {
   return gb >= 1 ? gb.toFixed(1) + " GB" : (bytes / (1 << 20)).toFixed(0) + " MB";
 }
 
+function fmtUptime(sec) {
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+
 function render(s) {
+  updateHostLabel(s);
   const memPct  = s.mem_total  ? (s.mem_used  / s.mem_total  * 100) : 0;
   const swapPct = s.swap_total ? (s.swap_used / s.swap_total * 100) : 0;
 
@@ -152,6 +157,12 @@ function render(s) {
         ${bar(swapPct)}
         <span class="mon-val">${fmtMem(s.swap_used)} / ${fmtMem(s.swap_total)}</span>
       </div>` : ""}
+      ${s.disks.map((d) => `<div class="mon-row">
+        <span class="mon-lbl">DSK</span>
+        ${bar(d.total ? (d.used / d.total) * 100 : 0)}
+        <span class="mon-val">${fmtMem(d.used)} / ${fmtMem(d.total)}</span>
+        <span class="mon-muted">${esc(d.mount)}</span>
+      </div>`).join("")}
       <div class="mon-row">
         <span class="mon-lbl">NET</span>
         <span class="mon-net">↑ ${fmtBytes(s.net_tx)}</span>

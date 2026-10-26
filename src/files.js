@@ -1,5 +1,6 @@
 // MobaXterm-style SFTP side panel: follows the active SSH tab, browse / download / upload
 // (buttons or drag & drop from Explorer) / rename / delete / open with default app.
+import { openInEditor } from "./editor.js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -93,7 +94,6 @@ export function initFiles(opts) {
 
 export function toggleFiles(force) {
   const open = document.body.classList.toggle("files-open", force);
-  document.body.dataset.filesView ??= "files";
   if (open) showFilesFor(activeTab());
   window.dispatchEvent(new Event("resize"));
 }
@@ -124,7 +124,7 @@ export async function openRemotePath(tab, path) {
   f.selected = i;
   render();
   $("files-body").querySelector(".file-row.selected")?.scrollIntoView({ block: "center" });
-  flash(`${name}: right-click for Edit / Download`);
+  editInMoxie(tab, f.entries[i]);
 }
 
 export function filesOnClose(tab) {
@@ -198,7 +198,20 @@ async function navigate(tab, path) {
 
 function activateEntry(tab, entry) {
   if (entry.is_dir) navigate(tab, entry.path);
-  else openRemote(tab, entry);
+  else editInMoxie(tab, entry);
+}
+
+/** Built-in editor; files it can't show (binary, over 5 MB) go to the system app instead. */
+async function editInMoxie(tab, entry) {
+  const r = await openInEditor(tab, entry.path);
+  if (r?.binary) {
+    flash(`${entry.name} isn't a text file: opening it with its default app`);
+    openRemote(tab, entry);
+  } else if (r?.tooLarge) {
+    if (confirm(`${entry.name} is ${(r.tooLarge / 1048576).toFixed(1)} MB; Moxie's editor opens files up to 5 MB.
+
+Open it in your external editor instead? (Saves upload back automatically.)`)) editRemote(tab, entry);
+  }
 }
 
 /** Opens a remote file in the editor; every save is uploaded back (MobaXterm-style). */
@@ -301,8 +314,13 @@ function entryMenu(tab, entry, x, y) {
   if (!tab?.files || tab.files.status !== "ready") return;
   const items = entry
     ? [
-        [entry.is_dir ? "Open folder" : "Open", () => activateEntry(tab, entry)],
-        ...(entry.is_dir ? [] : [["Edit (uploads on save)", () => editRemote(tab, entry)]]),
+        ...(entry.is_dir
+          ? [["Open folder", () => activateEntry(tab, entry)]]
+          : [
+              ["Edit in Moxie", () => editInMoxie(tab, entry)],
+              ["Edit in external editor (uploads on save)", () => editRemote(tab, entry)],
+              ["Open with default app", () => openRemote(tab, entry)],
+            ]),
         ["Download…", () => download(tab, entry)],
         ["Rename… (F2)", () => rename(tab, entry)],
         ["Delete (Del)", () => remove(tab, entry)],
