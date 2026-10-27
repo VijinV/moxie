@@ -177,6 +177,7 @@ pub fn parse_jump(spec: &str) -> Result<(Option<String>, String, u16), String> {
 ///
 /// `target_kh_*` is the host/port used for known_hosts lookup (may differ when tunneled via Bastion).
 /// `jump_key_path` / `jump_password` fall back to `key_path` / `password` when None or empty.
+/// `jump_trust` is the fingerprint to one-shot trust for the jump host (from the UI "Trust" flow).
 ///
 /// Returns `(target_handle, jump_handle)`. The jump handle **must be kept alive** alongside the
 /// target handle — dropping it closes the underlying channel. The returned target handle is **not
@@ -193,6 +194,7 @@ pub async fn connect_via_jump(
     password: Option<&str>,
     jump_key_path: Option<&str>,
     jump_password: Option<&str>,
+    jump_trust: Option<String>,
 ) -> Result<(client::Handle<Client>, client::Handle<Client>), String> {
     let (juser, jhost, jport) = parse_jump(jump_spec)?;
 
@@ -203,7 +205,7 @@ pub async fn connect_via_jump(
 
     // ── connect to jump host ─────────────────────────────────────────────────
     let jissue = Arc::new(Mutex::new(HostKeyIssue::None));
-    let jhandler = Client { host: jhost.clone(), port: jport, trust: None, issue: jissue.clone() };
+    let jhandler = Client { host: jhost.clone(), port: jport, trust: jump_trust, issue: jissue.clone() };
     let mut jh = match tokio::time::timeout(
         Duration::from_secs(20),
         client::connect(config.clone(), (jhost.as_str(), jport), jhandler),

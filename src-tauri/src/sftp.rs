@@ -72,6 +72,7 @@ pub async fn sftp_connect(
     jump: Option<String>,
     jump_key_path: Option<String>,
     jump_secret_key: Option<String>,
+    jump_trust: Option<String>,
 ) -> Result<String, String> {
     let issue = Arc::new(Mutex::new(HostKeyIssue::None));
     // Tunneled connections (Azure Bastion) land on 127.0.0.1:<random port>; check the host key
@@ -105,6 +106,7 @@ pub async fn sftp_connect(
             password.as_deref(),
             jump_key,
             jump_password.as_deref(),
+            jump_trust,
         )
         .await?;
         jump_handle = Some(jh);

@@ -133,7 +133,7 @@ export function filesOnClose(tab) {
 
 // ---------------------------------------------------------------- connection
 
-async function connect(tab, trust = null) {
+async function connect(tab, trust = null, jumpTrust = null) {
   const f = tab.files;
   const s = tab.spec.ssh;
   f.status = "connecting";
@@ -151,6 +151,7 @@ async function connect(tab, trust = null) {
       jump: s.jump ?? null,
       jumpKeyPath: s.jumpKey ?? "",
       jumpSecretKey: s.jumpSecretKey ?? null,
+      jumpTrust,
     });
     f.home = home;
     f.status = "ready";
@@ -171,7 +172,7 @@ async function connect(tab, trust = null) {
         s,
         msg === "AUTH_FAILED" ? "The saved password was rejected." : "No key or saved password worked.",
       );
-      if (retry) return connect(tab, trust);
+      if (retry) return connect(tab, trust, jumpTrust);
       Object.assign(f, { status: "error", error: "Authentication cancelled." });
     } else {
       Object.assign(f, { status: "error", error: msg });
@@ -412,7 +413,8 @@ function render() {
       <button class="primary-btn">Trust &amp; connect</button></div>`;
     body.querySelector("b").textContent = f.keyHost ?? tab.spec.ssh.label ?? tab.spec.ssh.host;
     body.querySelector("code").textContent = f.fingerprint;
-    body.querySelector("button").addEventListener("click", () => connect(tab, f.fingerprint));
+    body.querySelector("button").addEventListener("click", () =>
+      f.keyHost ? connect(tab, null, f.fingerprint) : connect(tab, f.fingerprint));
     return;
   }
   if (f.status === "error") {
