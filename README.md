@@ -8,14 +8,14 @@ A MobaXterm-style terminal and SSH/SFTP client with Warp-style AI, built in Rust
 
 ## Download
 
-Get Moxie from **[Releases](https://github.com/VijinV/term/releases)**.
+Get Moxie from **[Releases](https://github.com/VijinV/moxie/releases)**.
 
 ### Windows
 
 | File | Use it when |
 | --- | --- |
-| [`Moxie_0.3.2_x64-setup.exe`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.3.2_x64-setup.exe) | Normal install (Start menu entry, uninstaller). Recommended |
-| [`Moxie_0.3.2_x64_en-US.msi`](https://github.com/VijinV/term/releases/latest/download/Moxie_0.3.2_x64_en-US.msi) | Managed / IT deployment |
+| [`Moxie_0.3.4_x64-setup.exe`](https://github.com/VijinV/moxie/releases/latest/download/Moxie_0.3.4_x64-setup.exe) | Normal install (Start menu entry, uninstaller). Recommended |
+| [`Moxie_0.3.4_x64_en-US.msi`](https://github.com/VijinV/moxie/releases/latest/download/Moxie_0.3.4_x64_en-US.msi) | Managed / IT deployment |
 
 From 0.2.0 on, Moxie updates itself: when a new version is out it offers **Update now** (and ⬆ in the status bar). The installers aren't code-signed yet, so Windows SmartScreen warns on first run; choose **More info → Run anyway**.
 Moxie needs the WebView2 runtime, which Windows 10/11 already include.
@@ -24,7 +24,7 @@ Moxie needs the WebView2 runtime, which Windows 10/11 already include.
 
 | File | Use it when |
 | --- | --- |
-| [`Moxie_0.3.3_aarch64.dmg`](https://github.com/VijinV/term/releases/download/v0.3.3/Moxie_0.3.3_aarch64.dmg) | Open it and drag Moxie to Applications |
+| [`Moxie_0.3.3_aarch64.dmg`](https://github.com/VijinV/moxie/releases/download/v0.3.3/Moxie_0.3.3_aarch64.dmg) | Open it and drag Moxie to Applications |
 
 The app isn't signed or notarized yet, so the first time, right-click Moxie and choose **Open**. There's no auto-update on macOS yet: download new versions from Releases.
 

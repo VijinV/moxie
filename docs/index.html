@@ -176,7 +176,7 @@ footer .links { gap: 20px; }
       <a href="#features">Features</a>
       <a href="#ai">AI agent</a>
       <a href="#download">Download</a>
-      <a href="https://github.com/VijinV/term" rel="noopener">GitHub</a>
+      <a href="https://github.com/VijinV/moxie" rel="noopener">GitHub</a>
       <a class="btn small primary" href="#download">Download</a>
     </div>
   </div>
@@ -192,7 +192,7 @@ footer .links { gap: 20px; }
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11.2l4.2-4.2 1.4 1.4L12 17l-5.6-5.6L7.8 10 12 14.2V3zM5 19h14v2H5z"/></svg>
         <span id="cta-label">Download Moxie</span>
       </a>
-      <a class="btn" href="https://github.com/VijinV/term" rel="noopener">View on GitHub</a>
+      <a class="btn" href="https://github.com/VijinV/moxie" rel="noopener">View on GitHub</a>
     </div>
     <p class="fine" id="cta-fine">Windows 10/11 · macOS (Apple Silicon)</p>
 
@@ -290,8 +290,8 @@ footer .links { gap: 20px; }
           <li>Moxie offers new versions itself with <b>Update now</b></li>
         </ul>
         <div class="row">
-          <a class="btn primary" id="dl-exe" href="https://github.com/VijinV/term/releases/download/v0.3.2/Moxie_0.3.2_x64-setup.exe">Installer (.exe)</a>
-          <a class="btn" id="dl-msi" href="https://github.com/VijinV/term/releases/download/v0.3.2/Moxie_0.3.2_x64_en-US.msi">MSI for IT</a>
+          <a class="btn primary" id="dl-exe" href="https://github.com/VijinV/moxie/releases/download/v0.3.4/Moxie_0.3.4_x64-setup.exe">Installer (.exe)</a>
+          <a class="btn" id="dl-msi" href="https://github.com/VijinV/moxie/releases/download/v0.3.4/Moxie_0.3.4_x64_en-US.msi">MSI for IT</a>
         </div>
       </div>
       <div class="card" id="card-mac">
@@ -302,11 +302,11 @@ footer .links { gap: 20px; }
           <li>No auto-update on macOS yet: download new versions here</li>
         </ul>
         <div class="row">
-          <a class="btn primary" id="dl-dmg" href="https://github.com/VijinV/term/releases/download/v0.3.3/Moxie_0.3.3_aarch64.dmg">Disk image (.dmg)</a>
+          <a class="btn primary" id="dl-dmg" href="https://github.com/VijinV/moxie/releases/download/v0.3.3/Moxie_0.3.3_aarch64.dmg">Disk image (.dmg)</a>
         </div>
       </div>
     </div>
-    <p class="fine" style="text-align:center;margin-top:22px">Older versions and release notes on <a href="https://github.com/VijinV/term/releases" style="color:var(--accent-2)" rel="noopener">GitHub Releases</a>. Build from source with Node 18+, Rust and <code>npm run tauri build</code>.</p>
+    <p class="fine" style="text-align:center;margin-top:22px">Older versions and release notes on <a href="https://github.com/VijinV/moxie/releases" style="color:var(--accent-2)" rel="noopener">GitHub Releases</a>. Build from source with Node 18+, Rust and <code>npm run tauri build</code>.</p>
   </div>
 </section>
 </main>
@@ -315,9 +315,9 @@ footer .links { gap: 20px; }
   <div class="wrap">
     <a class="brand" href="#top"><img src="icon.png" alt="" width="24" height="24">Moxie</a>
     <div class="links">
-      <a href="https://github.com/VijinV/term" rel="noopener">GitHub</a>
-      <a href="https://github.com/VijinV/term/releases" rel="noopener">Releases</a>
-      <a href="https://github.com/VijinV/term/issues" rel="noopener">Report a bug</a>
+      <a href="https://github.com/VijinV/moxie" rel="noopener">GitHub</a>
+      <a href="https://github.com/VijinV/moxie/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/VijinV/moxie/issues" rel="noopener">Report a bug</a>
     </div>
     <span>Built with Tauri, Rust and xterm.js</span>
   </div>
@@ -332,7 +332,7 @@ footer .links { gap: 20px; }
   if (isMac) { var g = document.querySelector(".dl"); g.insertBefore(document.getElementById("card-mac"), document.getElementById("card-win")); }
 
   // Point the buttons at the newest release that has each file; the hard-coded links above are the fallback.
-  fetch("https://api.github.com/repos/VijinV/term/releases")
+  fetch("https://api.github.com/repos/VijinV/moxie/releases")
     .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
     .then(function (rels) {
       rels = rels.filter(function (r) { return !r.draft && !r.prerelease; });
