@@ -6,7 +6,7 @@ import {
 } from "./terminal.js";
 import {
   setSettings, loadHistory, trackInput, onSent, positionGhost, hideSuggestion, acceptSuggestion,
-  requestAiCompletion, initCommandBar, openCommandBar, initChat, sendChat, renderMarkdown,
+  requestAiCompletion, refreshChatScope, initCommandBar, openCommandBar, initChat, sendChat, renderMarkdown,
   onTermOutput, onCommandDone, onCommandStart, onBlockMenu, setAiHooks, onPaneActivated,
 } from "./ai.js";
 import { powershellIntegrationArgs, bashIntegrationEnv } from "./shell.js";
@@ -18,8 +18,10 @@ import { initFind, openFind } from "./find.js";
 import { THEMES, FONTS } from "./themes.js";
 import { initSnippets, openSnippetEditor, focusSnippets } from "./snippets.js";
 import { initUpdater, checkForUpdate, getPending } from "./updater.js";
-import { initMonitor, setMonitorTab } from "./monitor.js";
+import { initMonitor, setMonitorTab, initStatusStats } from "./monitor.js";
 import { initEditor, toggleEditor, openInEditor } from "./editor.js";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { setHighlight } from "./highlight.js";
 
 initLayout(); // before boot(): it doesn't need the backend
 
@@ -121,6 +123,7 @@ function toggleBroadcast() {
 
 /** Appearance from settings → every terminal. */
 function applyAppearance() {
+  setHighlight(settings.highlight_output !== false);
   setAppearance({
     theme: THEMES[settings.terminal_theme] ?? THEMES.moxie,
     fontFamily: settings.font_family ? `${settings.font_family}, "Cascadia Mono", Consolas, monospace` : `"Cascadia Mono", "Cascadia Code", Consolas, "JetBrains Mono", monospace`,
@@ -165,7 +168,8 @@ function renderShells() {
   }
 }
 
-const SESSION_ICON = { ssh: "⇄", bastion: "☁", rdp: "🖥", vnc: "🖵" };
+const SERVER_SVG = '<svg class="server-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="11" height="4.5" rx="1.2"/><rect x="2.5" y="9" width="11" height="4.5" rx="1.2"/><circle cx="5" cy="4.75" r=".8" fill="currentColor" stroke="none"/><circle cx="5" cy="11.25" r=".8" fill="currentColor" stroke="none"/></svg>';
+const SESSION_ICON = { ssh: SERVER_SVG, bastion: "☁", rdp: "🖥", vnc: "🖵" };
 // Per-session look: colour (icon, stripe and tab accent), icon, and tags.
 const SESSION_COLORS = ["#f7768e", "#ff9e64", "#e0af68", "#9ece6a", "#2ac3de", "#7aa2f7", "#bb9af7", "#ff79c6", "#737aa2"];
 const ICON_PICKS = ["🖥", "🗄", "🌐", "☁", "🐳", "🔒", "🚀", "🧪", "⚙", "📦", "🔥", "⭐"];
@@ -289,7 +293,7 @@ function renderSessions() {
 
 function sessionItem(s) {
   const type = s.type ?? "ssh";
-  const li = item(sessionTitle(s), s.icon || SESSION_ICON[type] || "⇄", () => connectSession(s));
+  const li = item(sessionTitle(s), s.icon || SESSION_ICON[type] || SERVER_SVG, () => connectSession(s));
   if (s.color) li.style.setProperty("--session-color", s.color), li.classList.add("colored");
   if (s.tags?.length) {
     const chips = document.createElement("span");
@@ -346,7 +350,8 @@ async function renderAgents() {
 function item(label, icon, onClick) {
   const li = document.createElement("li");
   li.innerHTML = `<span class="item-icon"></span><span class="item-label"></span>`;
-  li.querySelector(".item-icon").textContent = icon;
+  if (icon.startsWith("<svg")) li.querySelector(".item-icon").innerHTML = icon; // built-in icons only
+  else li.querySelector(".item-icon").textContent = icon;
   li.querySelector(".item-label").textContent = label;
   li.addEventListener("click", onClick);
   return li;
@@ -485,7 +490,7 @@ async function connectBastion(s, opts = {}) {
 
 function openSshTab(s, { splitOf = null, dir, ...target }) {
   openTab(sshSpec(s, target), { splitOf, dir });
-  if (!target.tunnelsOnly) toggleFiles(true); // MobaXterm opens the SFTP browser alongside every SSH session
+  // The SFTP panel opens only when asked (Files button / Ctrl+Shift+F), not on every login.
 }
 
 /** The terminal spec for an SSH session (also used to restore the workspace). */
@@ -576,7 +581,7 @@ async function restoreWorkspace() {
     restored++;
   }
   if (restored) activateIndex(Math.min(ws.active ?? 0, restored - 1));
-  if (allTabs().some((p) => p.spec.kind === "ssh" && !p.spec.tunnelsOnly)) toggleFiles(true);
+
   return restored;
 }
 
@@ -827,17 +832,34 @@ function toggleAiPanel(force) {
   else activeTab()?.term.focus();
 }
 
+// ------------------------------------------------------------------ window chrome
+
+{
+  const win = getCurrentWindow();
+  $("win-close").addEventListener("click", () => win.close());
+  $("win-min").addEventListener("click", () => win.minimize());
+  $("win-max").addEventListener("click", () => win.toggleMaximize());
+  // Resize edges: undecorated windows need them on every platform.
+  for (const edge of document.querySelectorAll(".win-resize")) {
+    edge.addEventListener("pointerdown", (e) => e.button === 0 && (e.preventDefault(), win.startResizeDragging(edge.dataset.dir)));
+  }
+  const syncMax = async () => document.body.classList.toggle("win-maximized", await win.isMaximized().catch(() => false));
+  win.onResized(syncMax);
+  syncMax();
+}
+
 /** Hides the sidebar (sessions, shells, snippets); the terminal takes the space. Remembered. */
 function toggleSidebar(force) {
   const collapsed = document.body.classList.toggle("side-collapsed", force === undefined ? undefined : !force);
   closeSidePeek();
-  try { localStorage.setItem("moxie-side-collapsed", collapsed ? "1" : ""); } catch {}
+  try { localStorage.setItem("moxie-side-collapsed", collapsed ? "1" : "0"); } catch {}
 }
 
 // Collapsed sidebar: the rail's section icons slide the full sidebar out over the terminal
 // ("peek"); it closes again on a click outside, Esc, or once something in it is opened.
 function openSidePeek(section) {
   document.body.classList.add("side-peek");
+  document.body.dataset.peek = section; // only that section shows in the slide-out
   const target = { shells: "shell-list", sessions: "session-filter", snippets: "snippet-filter", agents: "agent-list" }[section];
   const el = target && $(target);
   el?.closest("section")?.scrollIntoView({ block: "nearest" });
@@ -845,6 +867,7 @@ function openSidePeek(section) {
 }
 function closeSidePeek() {
   document.body.classList.remove("side-peek");
+  for (const b of document.querySelectorAll("#side-rail .rail-btn.on")) b.classList.remove("on");
 }
 $("side-rail").addEventListener("click", (e) => {
   const what = e.target.closest("[data-rail]")?.dataset.rail;
@@ -856,7 +879,10 @@ $("side-rail").addEventListener("click", (e) => {
   const same = document.body.classList.contains("side-peek") && $("side-rail").dataset.open === what;
   $("side-rail").dataset.open = what;
   if (same) closeSidePeek();
-  else openSidePeek(what);
+  else {
+    openSidePeek(what);
+    for (const b of document.querySelectorAll("#side-rail .rail-btn")) b.classList.toggle("on", b.dataset.rail === what);
+  }
 });
 document.addEventListener("mousedown", (e) => {
   if (document.body.classList.contains("side-peek") && !e.target.closest("#sidebar, #side-rail, dialog")) closeSidePeek();
@@ -886,9 +912,11 @@ function setStatus(text) {
 function updateStatus() {
   const tab = activeTab();
   const info = tab?.si?.info;
+  $("status-host").textContent = tab ? tab.spec.title : "";
+  $("status-host").style.setProperty("--dot", tab?.exited ? "var(--muted)" : tab?.spec.color || "var(--ok)");
+  $("status-host").hidden = !tab;
   $("status-left").textContent = tab
     ? [
-        tab.spec.title,
         info && `${info.user}@${info.host} · ${info.os}`,
         tab.spec.forwards?.length && `🔌 ${tab.spec.forwards.join(", ")}`,
         `${tab.term.cols}×${tab.term.rows}`,
@@ -931,7 +959,38 @@ $("new-tab").addEventListener("click", newDefaultTab);
 $("toggle-ai").addEventListener("click", () => toggleAiPanel());
 $("chat-full").addEventListener("click", () => toggleChatFull());
 $("side-toggle").addEventListener("click", () => toggleSidebar());
-try { if (localStorage.getItem("moxie-side-collapsed")) toggleSidebar(false); } catch {}
+// Session dialog: pick the private key file (starts in ~/.ssh).
+$("ssh-key-browse").addEventListener("click", async () => {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const { homeDir, join } = await import("@tauri-apps/api/path");
+  let defaultPath;
+  try {
+    defaultPath = await join(await homeDir(), ".ssh");
+  } catch {}
+  const path = await open({ title: "Choose your private key", defaultPath, multiple: false, directory: false });
+  if (typeof path !== "string") return;
+  // A .pub file is the public half; the private key sits next to it without the extension.
+  const key = path.replace(/\.pub$/i, "");
+  if (key !== path) setStatus("That was the public key (.pub); using the private key next to it.");
+  $("ssh-form").elements.key.value = key;
+});
+
+// Every dialog gets a × in its top-right corner (same as Cancel / Esc).
+for (const dlg of document.querySelectorAll("dialog")) {
+  if (dlg.querySelector("#changelog-close")) continue; // has its own
+  const x = document.createElement("button");
+  x.type = "button";
+  x.className = "dlg-x icon-btn";
+  x.title = "Close (Esc)";
+  x.textContent = "×";
+  x.addEventListener("click", () => dlg.close("cancel"));
+  dlg.append(x);
+}
+{
+  let pref = null;
+  try { pref = localStorage.getItem("moxie-side-collapsed"); } catch {}
+  if (pref !== "0") toggleSidebar(false); // the icon rail is the default look
+}
 try { if (localStorage.getItem("moxie-chat-full")) toggleChatFull(true); } catch {}
 $("cmdbar-btn").addEventListener("click", () => openCommandBar());
 $("files-btn").addEventListener("click", () => toggleFiles());
@@ -958,7 +1017,7 @@ async function boot() {
     onCommandStart,
     onCommandDone,
     onBlockMenu,
-    onInfo: (tab) => tab === activeTab() && updateStatus(),
+    onInfo: (tab) => tab === activeTab() && (updateStatus(), refreshChatScope()),
     onClose: (tab) => {
       closeCompletion(tab);
       filesOnClose(tab);
@@ -975,6 +1034,7 @@ async function boot() {
     },
   });
   initMonitor();
+  initStatusStats();
   initEditor({
     flash: setStatus,
     // The editor and chat full view both cover the terminal area: one at a time.

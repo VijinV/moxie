@@ -498,8 +498,12 @@ function scopeName(session) {
 
 function updateScope() {
   const el = document.getElementById("chat-scope");
-  if (el) el.textContent = scopeName(chatMeta.session);
+  const os = activeTab()?.si?.info?.os?.replace(/\s*\(build.*\)$/, "");
+  if (el) el.textContent = [scopeName(chatMeta.session), os].filter(Boolean).join(" · ");
 }
+
+/** The active terminal reported its OS / host: show it in the chat header. */
+export const refreshChatScope = () => updateScope();
 
 /** Redraws the whole log from `convo` (after loading a chat from history). */
 function renderConvo() {
@@ -515,6 +519,7 @@ function renderConvo() {
     } else if (m.step) {
       const card = stepCard(m.step.cmd, m.step.tab);
       card.querySelector(".status").textContent = stepStatus(m.step.note, m.step.exit);
+      card.querySelector(".step-icon").textContent = m.step.exit ? "✗" : m.step.note ? "•" : "✓";
       if (m.step.exit) card.classList.add("failed");
       card.querySelector("pre").textContent = m.step.output || "(no output)";
     } else if (m.role === "tool") {
@@ -818,6 +823,7 @@ async function executeCommand(cmd) {
   agent.running = true;
   const { output, note, exit } = await runAndCapture(tab, cmd).finally(() => (agent.running = false));
   card.querySelector(".status").textContent = stepStatus(note, exit);
+  card.querySelector(".step-icon").textContent = exit ? "✗" : note ? "•" : "✓";
   if (exit) card.classList.add("failed");
   card.querySelector("pre").textContent = output || "(no output)";
   setBusy(false);
@@ -891,30 +897,30 @@ async function fileTool(name, raw) {
   const remote = tab.spec.kind === "ssh";
   const cwd = tab.si?.cwd ?? (remote ? tab.files?.cwd : null);
   let path = raw.trim() || ".";
-  const icon = name === "read_file" ? "📄" : "📁";
+  const verb = name === "read_file" ? "read" : "list";
   try {
     if (remote) {
       const f = tab.files;
-      if (f?.status !== "ready") return { error: true, text: "The file connection to this server isn't open; use run_command (e.g. cat or ls) instead.", note: `${icon} ${path}: SFTP not connected` };
+      if (f?.status !== "ready") return { error: true, text: "The file connection to this server isn't open; use run_command (e.g. cat or ls) instead.", note: `✗ ${verb}: ${path} (SFTP not connected)` };
       if (path.startsWith("~")) path = (f.home ?? "") + path.slice(1);
       else if (!path.startsWith("/")) path = `${cwd ?? f.home}/${path.replace(/^\.\/?/, "")}`.replace(/\/$/, "") || "/";
       if (name === "read_file") {
         const text = await invoke("sftp_read", { connId: f.connId, path, max: 65536 });
-        return { text, note: `${icon} Read ${path} on the server` };
+        return { text, note: `✓ read: ${path}` };
       }
       const list = await invoke("sftp_list", { connId: f.connId, path });
-      return { text: list.map((e) => `${e.is_dir ? "d" : "-"} ${String(e.size).padStart(10)}  ${e.name}${e.is_dir ? "/" : ""}`).join("\n") || "(empty)", note: `${icon} Listed ${path} on the server (${list.length})` };
+      return { text: list.map((e) => `${e.is_dir ? "d" : "-"} ${String(e.size).padStart(10)}  ${e.name}${e.is_dir ? "/" : ""}`).join("\n") || "(empty)", note: `✓ list: ${path} (${list.length})` };
     }
     if (/^\/[a-zA-Z]\//.test(path)) path = `${path[1]}:${path.slice(2)}`;
     else if (!/^[A-Za-z]:|^\\\\/.test(path) && cwd && !cwd.startsWith("/")) path = `${cwd}\\${path.replace(/^\.[\\/]?/, "")}`;
     if (name === "read_file") {
       const text = await invoke("fs_read", { path, max: 65536 });
-      return { text, note: `${icon} Read ${path}` };
+      return { text, note: `✓ read: ${path}` };
     }
     const list = await invoke("fs_list", { dir: path });
-    return { text: list.map((e) => `${e.is_dir ? "d" : "-"}  ${e.name}${e.is_dir ? "/" : ""}`).join("\n") || "(empty)", note: `${icon} Listed ${path} (${list.length})` };
+    return { text: list.map((e) => `${e.is_dir ? "d" : "-"}  ${e.name}${e.is_dir ? "/" : ""}`).join("\n") || "(empty)", note: `✓ list: ${path} (${list.length})` };
   } catch (err) {
-    return { error: true, text: String(err), note: `${icon} ${path}: ${err}` };
+    return { error: true, text: String(err), note: `✗ ${verb}: ${path} (${err})` };
   }
 }
 
@@ -1027,12 +1033,12 @@ function confirmRun(cmd, tab, dangerous) {
   });
 }
 
-const stepStatus = (note, exit) => (note ? `· ${note}` : exit ? `· failed (exit ${exit})` : exit === 0 ? "· done ✓" : "· done");
+const stepStatus = (note, exit) => (note ? `· ${note}` : exit ? `· exit ${exit}` : "");
 
 function stepCard(cmd, tabTitle) {
   const d = document.createElement("details");
   d.className = "agent-step";
-  d.innerHTML = `<summary>▶ <code></code><span class="status">· running in </span></summary><pre></pre>`;
+  d.innerHTML = `<summary><span class="step-icon">◌</span><span class="step-kind">run:</span><code></code><span class="status">· running in </span></summary><pre></pre>`;
   d.querySelector("code").textContent = cmd.length > 80 ? cmd.slice(0, 80) + "…" : cmd;
   d.querySelector(".status").textContent += (tabTitle ?? "terminal") + "…";
   document.getElementById("chat-log").appendChild(d);
@@ -1043,7 +1049,7 @@ function stepCard(cmd, tabTitle) {
 function noteLine(text) {
   if (!text) return;
   const n = document.createElement("div");
-  n.className = "tool-note";
+  n.className = "tool-note" + (text.startsWith("✗") ? " failed" : "");
   n.textContent = text;
   document.getElementById("chat-log").appendChild(n);
   scrollChat();
@@ -1119,7 +1125,7 @@ function showErrorChip(tab, block) {
   const chip = document.createElement("div");
   chip.className = "error-chip";
   chip.innerHTML = `<span class="what">✗ <code></code> failed (exit ${block.exit})</span>
-    <button class="fix">✦ Explain &amp; fix</button><button class="x" title="Dismiss">×</button>`;
+    <button class="fix">✦ Explain &amp; fix · exit ${block.exit}</button><button class="x" title="Dismiss">×</button>`;
   chip.querySelector("code").textContent = block.cmd.length > 50 ? block.cmd.slice(0, 50) + "…" : block.cmd;
   chip.querySelector(".fix").addEventListener("click", () => {
     chip.remove();

@@ -581,3 +581,145 @@ body.side-collapsed .brand .side-collapse { display: none; }
 }
 .tab span.tab-title { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ai-title, .chat-scope { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* ---------------------------------------------------------------- frame (mockup layout)
+   The native title bar is off: the tab bar is the window's title bar (drag it, double-click to
+   maximize), the status bar spans the bottom, and the icon rail and panels sit between them. */
+:root { --title-h: 40px; --status-h: 26px; }
+#app { grid-template-rows: var(--title-h) minmax(0, 1fr) var(--status-h); }
+#tabbar { grid-column: 1 / -1; grid-row: 1; height: var(--title-h); padding: 0 10px 0 14px; gap: 6px; align-items: center; background: var(--bg); border-bottom: 1px solid var(--border); }
+#statusbar { grid-column: 1 / -1; grid-row: 3; height: var(--status-h); align-items: center; padding: 0 14px; }
+#sidebar, #files-panel, #main, #ai-panel { grid-row: 2; }
+body.chat-full #sidebar, body.chat-full #files-panel, body.chat-full #main, body.chat-full #ai-panel { grid-row: 2; }
+.splitter { top: var(--title-h); bottom: var(--status-h); }
+body.side-collapsed #side-rail { top: var(--title-h); bottom: var(--status-h); }
+body.side-collapsed.side-peek #sidebar { top: var(--title-h); bottom: var(--status-h); }
+#find-bar { top: 8px; }
+
+/* Window controls */
+.win-dots { display: flex; gap: 8px; margin-right: 10px; flex-shrink: 0; }
+.win-dot { width: 12px; height: 12px; border-radius: 50%; border: 0; padding: 0; background: #3a3f52; position: relative; cursor: default; }
+.win-dots:hover .win-dot.close { background: #ff5f57; }
+.win-dots:hover .win-dot.min { background: #febc2e; }
+.win-dots:hover .win-dot.max { background: #28c840; }
+.win-dot::after { position: absolute; inset: 0; display: grid; place-items: center; font: 700 9px/12px var(--ui-font); color: rgba(0, 0, 0, .55); opacity: 0; }
+.win-dots:hover .win-dot::after { opacity: 1; }
+.win-dot.close::after { content: "×"; }
+.win-dot.min::after { content: "–"; }
+.win-dot.max::after { content: "+"; }
+.win-resize { position: fixed; z-index: 100; }
+.win-resize[data-dir="North"] { top: 0; left: 8px; right: 8px; height: 6px; cursor: n-resize; }
+.win-resize[data-dir="South"] { bottom: 0; left: 8px; right: 8px; height: 6px; cursor: s-resize; }
+.win-resize[data-dir="East"] { right: 0; top: 8px; bottom: 8px; width: 6px; cursor: e-resize; }
+.win-resize[data-dir="West"] { left: 0; top: 8px; bottom: 8px; width: 6px; cursor: w-resize; }
+.win-resize[data-dir="NorthWest"] { top: 0; left: 0; width: 10px; height: 10px; cursor: nw-resize; }
+.win-resize[data-dir="NorthEast"] { top: 0; right: 0; width: 10px; height: 10px; cursor: ne-resize; }
+.win-resize[data-dir="SouthWest"] { bottom: 0; left: 0; width: 10px; height: 10px; cursor: sw-resize; }
+.win-resize[data-dir="SouthEast"] { bottom: 0; right: 0; width: 10px; height: 10px; cursor: se-resize; }
+body.win-maximized .win-resize { display: none; }
+
+/* Tabs as rounded chips in the title bar */
+.tab { border-radius: 7px; padding: 5px 12px; flex: 0 1 180px; min-width: 90px; margin: 0; }
+.tab.active { background: var(--panel-2); color: var(--text); box-shadow: none; }
+#tabbar > .pill-btn, #tabbar > .icon-btn { margin: 0; }
+/* Tools in the title bar: icon-only (tooltips keep the names) */
+#tabbar .pill-btn { background: transparent; border: 0; border-radius: 7px; padding: 5px 8px; color: #9aa2b8; }
+#tabbar .pill-btn:hover { background: var(--panel-2); color: var(--text); }
+#tabbar .pill-btn.active { color: var(--accent); background: var(--accent-soft); }
+#tabbar .pill-btn .label, #tabbar .pill-btn kbd { display: none; }
+#tabbar .tool-group { border-left: 0; margin: 0; padding: 0; }
+#tabbar .tool-btn { margin: 0; }
+#tabbar .spacer { align-self: stretch; }
+
+/* Status bar: ● host · CPU · Mem · stack · details */
+#statusbar { gap: 0; color: var(--muted); }
+#status-host { color: var(--text); margin-right: 18px; white-space: nowrap; }
+#status-host::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dot, var(--ok)); margin-right: 7px; vertical-align: 1px; }
+#status-stats { display: flex; gap: 18px; margin-right: 18px; white-space: nowrap; }
+#status-stats:empty { display: none; }
+#status-left { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; opacity: .75; }
+#status-ai { margin: 0 14px; white-space: nowrap; }
+
+/* Chat details from the mockup */
+.ai-title { flex: 0 0 auto; }
+.chat-scope::before { content: "· "; }
+.ai-header > select { margin-left: auto; }
+.step-icon { color: #9ece6a; width: 10px; display: inline-block; }
+.agent-step.failed .step-icon { color: var(--danger); }
+.step-kind { color: var(--muted); margin-right: -2px; }
+.agent-step summary code { color: var(--text); }
+.tool-note { border: 1px dashed #2c3350; border-radius: 9px; padding: 7px 11px; font: 12px var(--mono); color: var(--text); }
+.tool-note::first-letter { color: #9ece6a; }
+.tool-note.failed::first-letter { color: var(--danger); }
+
+/* Explain & fix: a purple pill */
+.error-chip { background: #16131f; border-color: var(--accent-line); color: var(--muted); }
+.error-chip code { color: var(--danger); }
+.error-chip .fix { background: var(--accent-soft); color: #c4b5fd; border: 1px solid var(--accent-line); border-radius: 999px; padding: 3px 12px; font-weight: 500; }
+.error-chip .fix:hover { background: #352d59; }
+
+/* Rail slide-out: one section at a time (shells, sessions, snippets or agents), full height */
+body.side-collapsed.side-peek #sidebar { width: 280px; padding: 14px 10px; gap: 0; background: var(--panel); border-right: 1px solid var(--border); }
+body.side-peek #sidebar .brand, body.side-peek #sidebar .sidebar-footer { display: none; }
+body.side-peek[data-peek="shells"] #sidebar section:not([data-sec="shells"]),
+body.side-peek[data-peek="sessions"] #sidebar section:not([data-sec="sessions"]),
+body.side-peek[data-peek="snippets"] #sidebar section:not([data-sec="snippets"]),
+body.side-peek[data-peek="agents"] #sidebar section:not([data-sec="agents"]) { display: none; }
+body.side-peek #sidebar section { flex: 1; max-height: none; min-height: 0; }
+body.side-peek #sidebar section .list { flex: 1; }
+body.side-peek #sidebar h3 { font-size: 12px; color: var(--text); padding: 2px 8px 10px; letter-spacing: .07em; }
+body.side-peek #sidebar .filter { margin-bottom: 8px; }
+
+/* Dropdown option lists: dark like the rest (WebView2 otherwise draws them white) */
+select option, select optgroup { background: var(--panel-2); color: var(--text); }
+select option:checked { background: var(--accent-soft); color: var(--text); }
+select option:disabled { color: var(--muted); }
+
+/* Split panes: a close button on each pane (only when the tab is split) */
+.term-pane { position: relative; }
+.pane-close { position: absolute; top: 6px; right: 14px; z-index: 7; display: none; width: 22px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--muted); font-size: 14px; line-height: 1; opacity: 0; transition: opacity .12s; }
+.pane-group.multi .pane-close { display: grid; place-items: center; }
+.pane-group.multi .term-pane:hover .pane-close, .pane-group.multi .term-pane.focused .pane-close { opacity: 1; }
+.pane-close:hover { color: var(--text); background: #2a1720; border-color: #5c2635; }
+
+/* Server icon for SSH sessions */
+.server-ico { width: 1.1em; height: 1.1em; display: block; }
+.item-icon .server-ico, .tab-icon .server-ico, .icon-pick .server-ico, .ir-icon .server-ico { width: 14px; height: 14px; }
+.item-icon:has(.server-ico), .tab-icon:has(.server-ico) { display: inline-grid; place-items: center; }
+/* Window dots sit at the right end of the title bar (close last, like Windows) */
+.win-dots { margin: 0 0 0 12px; padding-left: 12px; border-left: 1px solid var(--border); }
+#tabbar { padding-left: 10px; padding-right: 14px; }
+
+/* Dialogs: a close × in the corner; the button row stays visible while the form scrolls */
+dialog { position: fixed; }
+.dlg-x { position: absolute; top: 12px; right: 12px; z-index: 2; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; font-size: 18px; border-radius: 7px; color: var(--muted); }
+.dlg-x:hover { background: var(--panel-2); color: var(--text); }
+dialog form h2 { padding-right: 36px; }
+dialog form .dialog-actions { position: sticky; bottom: -18px; margin: 4px -20px -18px; padding: 12px 20px 16px; background: var(--panel); border-top: 1px solid var(--border); z-index: 1; }
+/* Text field with a button beside it (e.g. private key + Browse…) */
+.input-with-btn { display: flex; gap: 8px; }
+.input-with-btn input { flex: 1; min-width: 0; }
+.input-with-btn .ghost-btn { flex-shrink: 0; color: var(--text); }
+/* Session dialog: Colour and Icon each on one line */
+.look-row { flex-direction: column; gap: 10px; }
+.icon-picks { flex-wrap: nowrap; }
+.icon-picks input { width: 76px; flex-shrink: 0; }
+/* Line icons in header and title-bar buttons */
+.ui-ico { display: block; flex-shrink: 0; }
+#sidebar h3 .icon-btn { width: 24px; height: 22px; padding: 0; display: grid; place-items: center; }
+#tabbar #new-tab { width: 28px; height: 26px; padding: 0; display: grid; place-items: center; }
+#tabbar .pill-btn { display: grid; place-items: center; width: 30px; height: 28px; padding: 0; position: relative; }
+#tabbar #editor-btn .badge { position: absolute; top: 1px; right: -2px; font-size: 9px; min-width: 14px; padding: 0 3px; line-height: 14px; }
+
+/* SFTP panel: file names coloured by type (same colours as terminal highlighting) */
+.fn.k-dir { color: #7aa2f7; }
+.fn.k-link { color: #2ac3de; font-style: italic; }
+.fn.k-exec { color: #9ece6a; }
+.fn.k-code { color: #7dcfff; }
+.fn.k-config { color: #e0af68; }
+.fn.k-archive { color: #f7768e; }
+.fn.k-image, .fn.k-media { color: #bb9af7; }
+.fn.k-key { color: #ff79c6; }
+.fn.k-log, .fn.k-data { color: #ff9e64; }
+.fn.k-doc { color: #c0caf5; }
+#chat-history-btn { display: grid; place-items: center; width: 28px; height: 26px; padding: 0; }

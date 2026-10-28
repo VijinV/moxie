@@ -1,6 +1,7 @@
 // MobaXterm-style SFTP side panel: follows the active SSH tab, browse / download / upload
 // (buttons or drag & drop from Explorer) / rename / delete / open with default app.
 import { openInEditor } from "./editor.js";
+import { fileKind } from "./filetypes.js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -432,6 +433,8 @@ function render() {
     row.innerHTML = `<span class="fi"></span><span class="fn"></span><span class="fs"></span><span class="fd"></span>`;
     row.querySelector(".fi").textContent = e.is_dir ? "📁" : e.is_link ? "🔗" : "📄";
     row.querySelector(".fn").textContent = e.name;
+    const kind = fileKind(e.name, { isDir: e.is_dir, isLink: e.is_link, isExec: /x/.test(e.perms?.slice(1) ?? "") });
+    if (kind) row.querySelector(".fn").classList.add(`k-${kind}`);
     row.querySelector(".fs").textContent = e.is_dir ? "" : fmtSize(e.size);
     row.querySelector(".fd").textContent = e.mtime ? fmtDate(e.mtime) : "";
     body.appendChild(row);

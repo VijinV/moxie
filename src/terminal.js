@@ -2,6 +2,7 @@
 // is an xterm.js instance bound to a backend PTY (local shell, ssh, or CLI agent).
 // The rest of the app works with panes: activeTab() returns the focused pane of the active tab.
 import { Terminal } from "@xterm/xterm";
+import { highlight } from "./highlight.js";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -44,7 +45,7 @@ export function initTerminals(h) {
     const pane = byPty.get(e.payload.id);
     if (!pane) return;
     pane.lastOutput = Date.now();
-    const data = filterOutput(pane, e.payload.data);
+    const data = highlight(pane, filterOutput(pane, e.payload.data));
     if (data) pane.term.write(data, () => hooks.onOutput?.(pane));
   });
   listen("pty-exit", (e) => {
@@ -128,6 +129,13 @@ export async function openTab(spec, opts = {}) {
   layoutGroup(group);
   term.open(el);
   el.appendChild(ghost);
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "pane-close";
+  closeBtn.title = "Close this pane (Ctrl+Shift+W)";
+  closeBtn.textContent = "×";
+  closeBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+  closeBtn.addEventListener("click", (e) => (e.stopPropagation(), closeTab(id)));
+  el.appendChild(closeBtn);
   setupShellIntegration(pane, spec.integration ?? "none");
   registerPathLinks(pane);
 
@@ -408,6 +416,8 @@ function divider(split, index) {
   return d;
 }
 
+const SERVER_SVG = '<svg class="server-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="11" height="4.5" rx="1.2"/><rect x="2.5" y="9" width="11" height="4.5" rx="1.2"/><circle cx="5" cy="4.75" r=".8" fill="currentColor" stroke="none"/><circle cx="5" cy="11.25" r=".8" fill="currentColor" stroke="none"/></svg>';
+
 function renderTabs() {
   const root = $tabs();
   root.innerHTML = "";
@@ -415,12 +425,13 @@ function renderTabs() {
     const p = g.active;
     const b = document.createElement("div");
     b.className = "tab" + (g.id === activeGroupId ? " active" : "") + (g.panes.every((x) => x.exited) ? " exited" : "");
-    const icon = { shell: "›_", ssh: "⇄", agent: "✦" }[p.spec.kind] ?? "›_";
+    const icon = { shell: "›_", ssh: "", agent: "✦" }[p.spec.kind] ?? "›_";
     b.innerHTML = `<span class="tab-icon kind-${p.spec.kind}"></span><span class="tab-title"></span>${
       g.panes.length > 1 ? `<span class="tab-split" title="${g.panes.length} panes">⊞${g.panes.length}</span>` : ""
     }<button class="tab-close" title="Close tab">×</button>`;
     b.querySelector(".tab-title").textContent = p.spec.title;
-    b.querySelector(".tab-icon").textContent = p.spec.icon || icon;
+    if (p.spec.icon || icon) b.querySelector(".tab-icon").textContent = p.spec.icon || icon;
+    else b.querySelector(".tab-icon").innerHTML = SERVER_SVG;
     if (p.spec.color) b.style.setProperty("--session-color", p.spec.color), b.classList.add("colored");
     b.title = g.panes.map((x) => x.spec.title).join(" | ");
     b.addEventListener("mousedown", (e) => {

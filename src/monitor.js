@@ -39,6 +39,7 @@ export function setMonitorTab(tab) {
   activeTab = tab;
   updateHostLabel();
   if (isOpen) poll(); // immediate refresh when switching tabs
+  statusPoll();
 }
 
 export function toggleMonitor(force) {
@@ -179,4 +180,78 @@ function render(s) {
       </div>
       ${procsHtml}
     </div>`;
+}
+
+// ---- status bar: CPU and memory of the active terminal's machine, plus the server's stack.
+// SSH tabs read them over the Files panel's connection only, so the status bar never opens an
+// SSH login of its own; without that connection it just shows nothing.
+
+const STACK_PROBE = [
+  "p(){ printf '%s=%s\\n' \"$1\" \"$2\"; }",
+  "command -v nginx >/dev/null 2>&1 && p nginx ''",
+  "command -v apache2 >/dev/null 2>&1 && p apache ''",
+  "command -v php >/dev/null 2>&1 && p php \"$(php -r 'echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;' 2>/dev/null)\"",
+  "command -v node >/dev/null 2>&1 && p node \"$(node -v 2>/dev/null | sed 's/^v//; s/\\..*//')\"",
+  "command -v python3 >/dev/null 2>&1 && p python \"$(python3 -c 'import sys; print(\"%d.%d\" % sys.version_info[:2])' 2>/dev/null)\"",
+  "command -v docker >/dev/null 2>&1 && p docker \"$(docker --version 2>/dev/null | sed -E 's/[^0-9]*([0-9]+).*/\\1/')\"",
+  "command -v mysql >/dev/null 2>&1 && p mysql ''",
+  "command -v psql >/dev/null 2>&1 && p postgres ''",
+  "command -v redis-server >/dev/null 2>&1 && p redis ''",
+  "true",
+].join("; ");
+
+const escStatus = (v) => String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const gb = (b) => {
+  const g = b / 2 ** 30;
+  return g >= 10 ? String(Math.round(g)) : g.toFixed(1).replace(/\.0$/, "");
+};
+
+export function initStatusStats() {
+  setInterval(statusPoll, 5000);
+  statusPoll();
+}
+
+async function probeStack(tab) {
+  tab.stack = [];
+  try {
+    const out = await invoke("sftp_exec", { connId: tab.files.connId, command: STACK_PROBE });
+    tab.stack = out
+      .split("\n")
+      .map((l) => l.match(/^(\w+)=(.*)$/))
+      .filter(Boolean)
+      .map(([, name, ver]) => (ver.trim() ? `${name} ${ver.trim()}` : name));
+  } catch {}
+}
+
+async function statusPoll() {
+  const el = $("status-stats");
+  const tab = activeTab;
+  if (!el) return;
+  if (!tab || tab.exited) return void (el.innerHTML = "");
+  const ssh = tab.spec?.ssh;
+  let s;
+  try {
+    if (ssh) {
+      if (tab.files?.status !== "ready") return void (el.innerHTML = "");
+      if (!tab.stack) await probeStack(tab);
+      s = await invoke("get_remote_stats", {
+        host: ssh.host,
+        port: ssh.port ?? 22,
+        user: ssh.user ?? "",
+        keyPath: ssh.key ?? "",
+        secretKey: ssh.secretKey ?? null,
+        connId: tab.files.connId,
+      });
+    } else {
+      s = await invoke("get_stats");
+    }
+  } catch {
+    return void (el.innerHTML = "");
+  }
+  if (tab !== activeTab) return;
+  el.innerHTML = [
+    `<span>CPU ${Math.round(s.cpu)}%</span>`,
+    s.mem_total ? `<span>Mem ${gb(s.mem_used)} / ${gb(s.mem_total)} GB</span>` : "",
+    tab.stack?.length ? `<span class="status-stack">${escStatus(tab.stack.join(" · "))}</span>` : "",
+  ].join("");
 }
