@@ -409,6 +409,11 @@ body.monitor-open #monitor-panel { display: flex; }
 .mon-cores-row { display: flex; gap: 3px; margin-left: 42px; flex-wrap: wrap; }
 .mon-core { width: 16px; height: 20px; background: var(--panel-2); border-radius: 2px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
 .mon-core-fill { width: 100%; transition: height .4s, background .4s; }
+.mon-svc-col { width: 160px; flex-shrink: 0; }
+.mon-svc-grid { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; overflow-y: auto; }
+.mon-svc-chip { display: flex; align-items: baseline; gap: 5px; padding: 2px 6px; background: var(--panel-2); border-radius: 4px; border: 1px solid var(--border); }
+.mon-svc-name { font-size: 11px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.mon-svc-ver { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mon-procs-head { display: flex; align-items: center; gap: 8px; padding-bottom: 3px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
 .mon-proc { display: grid; grid-template-columns: 1fr 42px 56px 58px; gap: 8px; align-items: center; padding: 2px 0; border-bottom: 1px solid rgba(35,40,56,.5); }
 .mon-proc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font: 11.5px var(--mono); }

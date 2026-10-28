@@ -456,7 +456,7 @@
     <dialog id="changelog-dialog">
       <div class="changelog-header">
         <span class="changelog-title">✦ What's New in Moxie</span>
-        <span class="changelog-ver">v0.3.2</span>
+        <span class="changelog-ver">v0.3.3</span>
         <button class="icon-btn" id="changelog-close" title="Close">×</button>
       </div>
       <div id="changelog-update-banner" class="changelog-banner hidden">
@@ -467,7 +467,25 @@
       <div class="changelog-body">
 
         <div class="changelog-section">
-          <div class="changelog-section-tag">v0.3.2 — Current</div>
+          <div class="changelog-section-tag">v0.3.3 — Current</div>
+          <div class="changelog-item">
+            <span class="changelog-icon">🔌</span>
+            <div>
+              <div class="changelog-item-title">Service versions in the monitor</div>
+              <div class="changelog-item-desc">The activity monitor now shows a <strong>Services</strong> column listing every installed runtime and service (nginx, PHP, Node.js, npm, Python, MySQL, PostgreSQL, Redis, Docker, Java, Go, Ruby, pm2) with its version number — both for this PC and for SSH servers.</div>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <span class="changelog-icon">🪜</span>
+            <div>
+              <div class="changelog-item-title">Jump host passwords work correctly</div>
+              <div class="changelog-item-desc">Fixed auto-login through jump hosts when the jump host and the target server have different passwords. The app now types each password to the right prompt instead of using the same one twice.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="changelog-section">
+          <div class="changelog-section-tag">v0.3.2</div>
           <div class="changelog-item">
             <span class="changelog-icon">🏷</span>
             <div>
