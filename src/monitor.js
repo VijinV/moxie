@@ -139,6 +139,12 @@ function render(s) {
     </div>`
   ).join("") || '<span class="muted">No processes</span>';
 
+  const svcsHtml = (s.services ?? []).length
+    ? (s.services ?? []).map(svc =>
+        `<div class="mon-svc-chip"><span class="mon-svc-name">${esc(svc.name)}</span><span class="mon-svc-ver">${esc(svc.version)}</span></div>`
+      ).join("")
+    : "";
+
   $("monitor-body").innerHTML = `
     <div class="mon-col">
       <div class="mon-row">
@@ -171,6 +177,11 @@ function render(s) {
       </div>
     </div>
     <div class="mon-divider"></div>
+    ${svcsHtml ? `<div class="mon-col mon-svc-col">
+      <span class="mon-lbl">SERVICES</span>
+      <div class="mon-svc-grid">${svcsHtml}</div>
+    </div>
+    <div class="mon-divider"></div>` : ""}
     <div class="mon-col mon-procs-col">
       <div class="mon-procs-head">
         <span class="mon-lbl">PROCESSES</span>

@@ -20,6 +20,8 @@ struct LocalInner {
     nets: Networks,
     disks: Disks,
     prev_net: Option<(u64, u64, Instant)>,
+    services: Vec<ServiceInfo>,
+    services_last: Option<Instant>,
 }
 
 impl Default for MonitorState {
@@ -30,6 +32,8 @@ impl Default for MonitorState {
                 nets: Networks::new_with_refreshed_list(),
                 disks: Disks::new_with_refreshed_list(),
                 prev_net: None,
+                services: Vec::new(),
+                services_last: None,
             }),
             AsyncMutex::new(RemoteCache::default()),
         )
@@ -53,6 +57,13 @@ pub struct Stats {
     uptime: u64,
     host: String,
     os: String,
+    services: Vec<ServiceInfo>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ServiceInfo {
+    name: String,
+    version: String,
 }
 
 #[derive(Serialize)]
@@ -67,6 +78,65 @@ pub struct Disk {
     mount: String,
     used: u64,
     total: u64,
+}
+
+// Shell snippet that probes installed service versions; outputs "name%version_line" per line.
+// Used both for remote (embedded in PROBE) and local detection.
+const SVC_PROBE: &str = "\
+  command -v nginx >/dev/null 2>&1 && { v=$(nginx -v 2>&1 | head -1); echo \"nginx%$v\"; }; \
+  command -v php >/dev/null 2>&1 && { v=$(php --version 2>/dev/null | head -1); echo \"php%$v\"; }; \
+  command -v node >/dev/null 2>&1 && { v=$(node --version 2>/dev/null); echo \"node%$v\"; }; \
+  command -v npm >/dev/null 2>&1 && { v=$(npm --version 2>/dev/null); echo \"npm%$v\"; }; \
+  command -v python3 >/dev/null 2>&1 && { v=$(python3 --version 2>/dev/null); echo \"python%$v\"; }; \
+  command -v ruby >/dev/null 2>&1 && { v=$(ruby --version 2>/dev/null | head -1); echo \"ruby%$v\"; }; \
+  command -v mysql >/dev/null 2>&1 && { v=$(mysql --version 2>/dev/null | head -1); echo \"mysql%$v\"; }; \
+  command -v psql >/dev/null 2>&1 && { v=$(psql --version 2>/dev/null); echo \"postgres%$v\"; }; \
+  command -v redis-server >/dev/null 2>&1 && { v=$(redis-server --version 2>/dev/null); echo \"redis%$v\"; }; \
+  command -v docker >/dev/null 2>&1 && { v=$(docker --version 2>/dev/null); echo \"docker%$v\"; }; \
+  command -v java >/dev/null 2>&1 && { v=$(java -version 2>&1 | head -1); echo \"java%$v\"; }; \
+  command -v go >/dev/null 2>&1 && { v=$(go version 2>/dev/null); echo \"go%$v\"; }; \
+  command -v pm2 >/dev/null 2>&1 && { v=$(pm2 --version 2>/dev/null | head -1); echo \"pm2%$v\"; }; \
+  : ";
+
+/// Find the first `X.Y[.Z…]` version string in a raw version output line.
+fn extract_version(s: &str) -> String {
+    let b = s.as_bytes();
+    for i in 0..b.len().saturating_sub(2) {
+        if b[i].is_ascii_digit() && b[i + 1] == b'.' && b[i + 2].is_ascii_digit() {
+            let end = b[i..]
+                .iter()
+                .position(|c| !c.is_ascii_alphanumeric() && *c != b'.' && *c != b'-')
+                .map(|p| i + p)
+                .unwrap_or(b.len());
+            return s[i..end].to_string();
+        }
+    }
+    s.trim().to_string()
+}
+
+fn parse_services(block: &str) -> Vec<ServiceInfo> {
+    block
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(2, '%');
+            let name = parts.next()?.trim().to_string();
+            if name.is_empty() { return None; }
+            let raw = parts.next().unwrap_or("").trim().to_string();
+            let version = extract_version(&raw);
+            if version.is_empty() { return None; }
+            Some(ServiceInfo { name, version })
+        })
+        .collect()
+}
+
+fn detect_local_services() -> Vec<ServiceInfo> {
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(SVC_PROBE)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    parse_services(&out)
 }
 
 #[tauri::command]
@@ -119,6 +189,13 @@ pub fn get_stats(state: State<'_, MonitorState>) -> Stats {
         })
         .collect();
 
+    // Refresh service versions at most once every 30 seconds (slow external commands).
+    if g.services_last.map_or(true, |t| t.elapsed().as_secs() > 30) {
+        g.services = detect_local_services();
+        g.services_last = Some(Instant::now());
+    }
+    let services = g.services.clone();
+
     let la = System::load_average();
     Stats {
         cpu,
@@ -135,6 +212,7 @@ pub fn get_stats(state: State<'_, MonitorState>) -> Stats {
         uptime: System::uptime(),
         host: System::host_name().unwrap_or_default(),
         os: System::long_os_version().unwrap_or_default(),
+        services,
     }
 }
 
@@ -172,10 +250,25 @@ async fn exec(handle: &mut client::Handle<ssh_conn::Client>, cmd: &str) -> Resul
 }
 
 /// Sections separated by SPLIT lines, so a missing tool only leaves its section empty.
+/// Sections: 0=cpu 1=mem 2=load 3=ps 4=net 5=df 6=uptime 7=host 8=os 9=services
 const PROBE: &str = "{ grep '^cpu' /proc/stat; echo SPLIT; free -b 2>/dev/null; echo SPLIT; cat /proc/loadavg; \
 echo SPLIT; ps --no-headers -eo comm,pcpu,rss --sort=-pcpu 2>/dev/null | head -10; echo SPLIT; cat /proc/net/dev 2>/dev/null; \
 echo SPLIT; df -Pk 2>/dev/null | tail -n +2; echo SPLIT; cat /proc/uptime; echo SPLIT; hostname 2>/dev/null; \
-echo SPLIT; (. /etc/os-release 2>/dev/null && echo \"$PRETTY_NAME\") || uname -sr; }";
+echo SPLIT; (. /etc/os-release 2>/dev/null && echo \"$PRETTY_NAME\") || uname -sr; echo SPLIT; \
+{ command -v nginx >/dev/null 2>&1 && { v=$(nginx -v 2>&1 | head -1); echo \"nginx%$v\"; }; \
+  command -v php >/dev/null 2>&1 && { v=$(php --version 2>/dev/null | head -1); echo \"php%$v\"; }; \
+  command -v node >/dev/null 2>&1 && { v=$(node --version 2>/dev/null); echo \"node%$v\"; }; \
+  command -v npm >/dev/null 2>&1 && { v=$(npm --version 2>/dev/null); echo \"npm%$v\"; }; \
+  command -v python3 >/dev/null 2>&1 && { v=$(python3 --version 2>/dev/null); echo \"python%$v\"; }; \
+  command -v ruby >/dev/null 2>&1 && { v=$(ruby --version 2>/dev/null | head -1); echo \"ruby%$v\"; }; \
+  command -v mysql >/dev/null 2>&1 && { v=$(mysql --version 2>/dev/null | head -1); echo \"mysql%$v\"; }; \
+  command -v psql >/dev/null 2>&1 && { v=$(psql --version 2>/dev/null); echo \"postgres%$v\"; }; \
+  command -v redis-server >/dev/null 2>&1 && { v=$(redis-server --version 2>/dev/null); echo \"redis%$v\"; }; \
+  command -v docker >/dev/null 2>&1 && { v=$(docker --version 2>/dev/null); echo \"docker%$v\"; }; \
+  command -v java >/dev/null 2>&1 && { v=$(java -version 2>&1 | head -1); echo \"java%$v\"; }; \
+  command -v go >/dev/null 2>&1 && { v=$(go version 2>/dev/null); echo \"go%$v\"; }; \
+  command -v pm2 >/dev/null 2>&1 && { v=$(pm2 --version 2>/dev/null | head -1); echo \"pm2%$v\"; }; \
+  : ; }; }";
 
 fn parse_remote(raw: &str, conn: &mut RemoteConn) -> Stats {
     let parts: Vec<&str> = raw.split("SPLIT\n").collect();
@@ -188,6 +281,7 @@ fn parse_remote(raw: &str, conn: &mut RemoteConn) -> Stats {
     let (net_rx, net_tx) = parse_net_dev(part(4), conn);
     let disks = parse_df(part(5));
     let uptime = part(6).split_whitespace().next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0) as u64;
+    let services = parse_services(part(9));
 
     Stats {
         cpu,
@@ -204,6 +298,7 @@ fn parse_remote(raw: &str, conn: &mut RemoteConn) -> Stats {
         uptime,
         host: part(7).trim().to_string(),
         os: part(8).trim().to_string(),
+        services,
     }
 }
 

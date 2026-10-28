@@ -72,6 +72,8 @@ pub fn pty_spawn(
     cols: u16,
     rows: u16,
     secret_key: Option<String>,
+    // Separate password for the jump host (typed first); falls back to secret_key if None.
+    jump_secret_key: Option<String>,
     // How many password prompts to answer (2 through a jump host: jump + server).
     secret_uses: Option<u32>,
     env: Option<HashMap<String, String>>,
@@ -115,9 +117,19 @@ pub fn pty_spawn(
         let mut buf = [0u8; 16 * 1024];
         // Bytes of a multi-byte UTF-8 char split across reads wait here for the next read.
         let mut pending: Vec<u8> = Vec::new();
-        // MobaXterm-style auto-login: answer the first "password:" prompt with the saved
-        // password. Only once, so a wrong password falls back to manual entry.
-        let mut autofill = secret_key.as_deref().and_then(crate::secrets::get);
+        // MobaXterm-style auto-login: answer password prompts with saved credentials.
+        // If a jump_secret_key is provided, use it for the first prompt (jump host) and
+        // secret_key for subsequent prompts (target server). Without a jump key both
+        // prompts use secret_key (same password for both hops).
+        let target_pw = secret_key.as_deref().and_then(crate::secrets::get);
+        let jump_pw = jump_secret_key.as_deref().and_then(crate::secrets::get);
+        // Queue: first entry is used for the first prompt, last entry for all remaining.
+        let mut pw_queue: Vec<Option<String>> = if jump_pw.is_some() {
+            vec![jump_pw, target_pw]
+        } else {
+            vec![target_pw]
+        };
+        let mut autofill = pw_queue.remove(0);
         let mut uses_left = secret_uses.unwrap_or(1).clamp(1, 3);
         let started = std::time::Instant::now();
         let mut tail = String::new();
@@ -150,8 +162,16 @@ pub fn pty_spawn(
                             }
                             tail.clear(); // the next prompt must be a new one
                             uses_left -= 1;
+                            // Advance to next queued password (e.g. target after jump host).
+                            if !pw_queue.is_empty() {
+                                autofill = pw_queue.remove(0);
+                            } else if uses_left == 0 {
+                                autofill = None;
+                            }
+                            // Exhausted all allowed prompts — stop autofill entirely.
                             if uses_left == 0 {
                                 autofill = None;
+                                pw_queue.clear();
                             }
                         } else if started.elapsed().as_secs() > 60 {
                             autofill = None;

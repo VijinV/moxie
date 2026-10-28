@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moxie — AI terminal &amp; SSH client</title>
+<meta name="description" content="Moxie is a fast desktop terminal and SSH/SFTP client with a built-in AI agent that works on your servers. Split panes, command blocks, file panel, editor and server monitor.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0d0f15">
+<meta property="og:title" content="Moxie — AI terminal & SSH client">
+<meta property="og:description" content="A fast terminal and SSH/SFTP client with an AI agent that knows your servers.">
+<meta property="og:type" content="website">
+<link rel="icon" href="icon.png">
+<style>
+:root {
+  --bg: #0d0f15;
+  --panel: #12151d;
+  --panel-2: #181c26;
+  --border: #232838;
+  --text: #d6dae4;
+  --muted: #8a92a6;
+  --accent: #a78bfa;
+  --accent-2: #7dcfff;
+  --danger: #f7768e;
+  --ok: #9ece6a;
+  --warn: #e0af68;
+  --grad: linear-gradient(135deg, #a78bfa, #7dcfff);
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.6 var(--ui); -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+code, kbd { font-family: var(--mono); }
+.wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
+.grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* nav */
+nav { position: sticky; top: 0; z-index: 20; background: rgba(13,15,21,.82); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -.01em; }
+.brand img { width: 28px; height: 28px; border-radius: 7px; }
+.links { display: flex; align-items: center; gap: 26px; font-size: 14px; color: var(--muted); }
+.links a:hover { color: var(--text); }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 10px;
+  font-weight: 600; font-size: 15px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  transition: transform .15s, border-color .15s, box-shadow .15s; cursor: pointer;
+}
+.btn:hover { transform: translateY(-1px); border-color: #3a4160; }
+.btn.primary { background: var(--grad); color: #0d0f15; border: 0; box-shadow: 0 8px 30px -8px rgba(167,139,250,.55); }
+.btn.primary:hover { box-shadow: 0 10px 36px -6px rgba(125,207,255,.6); }
+.btn.small { padding: 7px 14px; font-size: 13px; }
+.btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+/* hero */
+.hero { position: relative; padding: 84px 0 40px; text-align: center; overflow: hidden; }
+.hero::before {
+  content: ""; position: absolute; inset: -200px 0 auto; height: 640px; z-index: -1;
+  background: radial-gradient(600px 300px at 30% 40%, rgba(167,139,250,.22), transparent 70%),
+              radial-gradient(520px 280px at 72% 35%, rgba(125,207,255,.16), transparent 70%);
+}
+.pill { display: inline-flex; gap: 8px; align-items: center; padding: 5px 14px; border: 1px solid var(--border); border-radius: 99px; font-size: 13px; color: var(--muted); background: var(--panel); }
+.pill b { color: var(--accent-2); font-weight: 600; }
+h1 { font-size: clamp(38px, 6.4vw, 72px); line-height: 1.04; letter-spacing: -.035em; margin: 22px auto 18px; max-width: 14em; }
+.lead { max-width: 640px; margin: 0 auto; font-size: clamp(17px, 2vw, 20px); color: var(--muted); }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 32px; }
+.fine { margin-top: 14px; font-size: 13px; color: var(--muted); }
+
+/* app mock */
+.mock-wrap { margin-top: 56px; perspective: 1600px; }
+.mock {
+  margin-inline: auto; max-width: 1040px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel);
+  box-shadow: 0 40px 120px -30px rgba(125,100,255,.35), 0 0 0 1px rgba(255,255,255,.02) inset; overflow: hidden; text-align: left;
+}
+.titlebar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #0f1219; border-bottom: 1px solid var(--border); }
+.dot { width: 11px; height: 11px; border-radius: 50%; background: #2a2f40; }
+.tabs { display: flex; gap: 6px; margin-left: 14px; font-size: 12px; overflow: hidden; }
+.tab { padding: 4px 12px; border-radius: 7px 7px 0 0; color: var(--muted); white-space: nowrap; display: flex; gap: 6px; align-items: center; }
+.tab.on { background: var(--panel-2); color: var(--text); }
+.tab i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.body { display: grid; grid-template-columns: 52px 1fr 330px; min-height: 380px; }
+.rail { background: #0f1219; border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 14px; }
+.rail span { width: 30px; height: 30px; border-radius: 8px; background: var(--panel-2); display: grid; place-items: center; font-size: 14px; }
+.rail span.on { outline: 1px solid var(--accent); }
+.term { padding: 16px 18px; font: 13px/1.65 var(--mono); background: var(--bg); overflow: hidden; }
+.term .p { color: var(--ok); } .term .d { color: var(--muted); } .term .c { color: var(--accent-2); }
+.blk { border-left: 3px solid var(--ok); padding-left: 12px; margin: 4px 0 10px; }
+.blk.err { border-color: var(--danger); }
+.err-t { color: var(--danger); }
+.chip { display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 99px; background: rgba(167,139,250,.15); color: var(--accent); font: 12px var(--ui); border: 1px solid rgba(167,139,250,.35); }
+.cursor { display: inline-block; width: 8px; height: 15px; background: var(--text); vertical-align: -2px; animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.ai { background: var(--panel); border-left: 1px solid var(--border); padding: 14px; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
+.ai h6 { margin: 0; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.msg { background: var(--panel-2); border-radius: 10px; padding: 9px 12px; }
+.msg.me { align-self: flex-end; background: rgba(167,139,250,.16); max-width: 90%; }
+.tool { font: 12px var(--mono); color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; padding: 5px 9px; display: flex; gap: 8px; }
+.tool b { color: var(--ok); font-weight: 400; }
+.ask { border: 1px solid rgba(247,118,142,.5); background: rgba(247,118,142,.07); border-radius: 10px; padding: 9px 12px; }
+.ask code { color: var(--danger); font-size: 12px; }
+.ask div { margin-top: 8px; display: flex; gap: 8px; }
+.ask span { padding: 3px 12px; border-radius: 7px; font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); }
+.ask span.go { background: var(--danger); color: #0d0f15; border: 0; font-weight: 600; }
+.status { display: flex; gap: 18px; padding: 6px 14px; background: #0f1219; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+
+/* sections */
+section { padding: 96px 0 0; }
+.eyebrow { font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-2); }
+h2 { font-size: clamp(28px, 4vw, 44px); line-height: 1.1; letter-spacing: -.025em; margin: 10px 0 14px; max-width: 18em; }
+.sub { color: var(--muted); max-width: 640px; font-size: 18px; margin: 0; }
+.grid { display: grid; gap: 16px; margin-top: 40px; grid-template-columns: repeat(3, 1fr); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 24px; transition: border-color .2s, transform .2s; }
+.card:hover { border-color: #3a4160; transform: translateY(-2px); }
+.ico { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; font-size: 18px; background: rgba(167,139,250,.14); margin-bottom: 14px; }
+.card h3 { margin: 0 0 6px; font-size: 17px; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+.card kbd { font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; color: var(--text); }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.ticks { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 14px; }
+.ticks li { display: flex; gap: 12px; color: var(--muted); }
+.ticks li::before { content: "✓"; color: var(--ok); font-weight: 700; flex: none; }
+.ticks b { color: var(--text); font-weight: 600; }
+.provs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.prov { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.prov b { display: block; margin-bottom: 2px; }
+.prov span { font-size: 13px; color: var(--muted); }
+.safe { margin-top: 20px; display: flex; gap: 14px; padding: 18px; border-radius: 12px; border: 1px solid rgba(247,118,142,.35); background: rgba(247,118,142,.06); font-size: 14px; color: var(--muted); }
+.safe b { color: var(--text); }
+
+.dl { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 40px; }
+.dl .card { display: flex; flex-direction: column; gap: 14px; }
+.dl .card:hover { transform: none; }
+.dl h3 { display: flex; align-items: center; gap: 10px; font-size: 20px; }
+.dl h3 svg { width: 24px; height: 24px; fill: var(--text); }
+.dl ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+.dl .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; }
+.tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: rgba(125,207,255,.14); color: var(--accent-2); margin-left: auto; }
+.tag.warn { background: rgba(224,175,104,.14); color: var(--warn); }
+
+footer { margin-top: 110px; border-top: 1px solid var(--border); padding: 34px 0 48px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; }
+footer .brand { font-size: 16px; color: var(--text); }
+footer .links { gap: 20px; }
+
+@media (max-width: 900px) {
+  .links a:not(.btn) { display: none; }
+  .body { grid-template-columns: 1fr; }
+  .rail, .ai { display: none; }
+  .grid { grid-template-columns: 1fr 1fr; }
+  .split, .dl { grid-template-columns: 1fr; gap: 32px; }
+}
+@media (max-width: 600px) {
+  .hero { padding-top: 56px; }
+  section { padding-top: 72px; }
+  .grid, .provs { grid-template-columns: 1fr; }
+  .term { font-size: 12px; padding: 12px; }
+  .tabs .tab:nth-child(n+3) { display: none; }
+  .btn { width: 100%; justify-content: center; }
+  .links .btn { width: auto; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.png" alt="" width="28" height="28">Moxie</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#ai">AI agent</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/VijinV/term" rel="noopener">GitHub</a>
+      <a class="btn small primary" href="#download">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <span class="pill"><b id="ver-pill">v0.3.3</b> Windows &amp; macOS · built with Rust</span>
+    <h1>The terminal that <span class="grad-text">knows your servers</span></h1>
+    <p class="lead">Moxie is a fast desktop terminal and SSH/SFTP client with an AI agent built in. It runs commands, reads files and explains errors on the machine you're connected to, and always asks before it deletes anything.</p>
+    <div class="cta">
+      <a class="btn primary" id="cta-main" href="#download">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11.2l4.2-4.2 1.4 1.4L12 17l-5.6-5.6L7.8 10 12 14.2V3zM5 19h14v2H5z"/></svg>
+        <span id="cta-label">Download Moxie</span>
+      </a>
+      <a class="btn" href="https://github.com/VijinV/term" rel="noopener">View on GitHub</a>
+    </div>
+    <p class="fine" id="cta-fine">Windows 10/11 · macOS (Apple Silicon)</p>
+
+    <div class="mock-wrap" aria-hidden="true">
+      <div class="mock">
+        <div class="titlebar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <div class="tabs">
+            <span class="tab on"><i style="background:#9ece6a"></i>web-01</span>
+            <span class="tab"><i style="background:#7dcfff"></i>db-prod</span>
+            <span class="tab"><i style="background:#e0af68"></i>staging</span>
+          </div>
+        </div>
+        <div class="body">
+          <div class="rail"><span class="on">▦</span><span>☰</span><span>✂</span><span>✦</span></div>
+          <div class="term">
+            <div><span class="p">deploy@web-01</span> <span class="d">~/app</span> <span class="c">$</span> docker compose up -d</div>
+            <div class="blk"><span class="d">[+] Running 3/3</span><br>✔ Container app-db-1&nbsp;&nbsp;&nbsp;Started<br>✔ Container app-web-1&nbsp;&nbsp;Started</div>
+            <div><span class="p">deploy@web-01</span> <span class="d">~/app</span> <span class="c">$</span> sudo systemctl restart nginx</div>
+            <div class="blk err"><span class="err-t">Failed to restart nginx.service: Unit nginx.service not found.</span><br><span class="chip">✦ Explain &amp; fix · exit 5</span></div>
+            <div><span class="p">deploy@web-01</span> <span class="d">~/app</span> <span class="c">$</span> <span class="cursor"></span></div>
+          </div>
+          <div class="ai">
+            <h6>✦ Assistant · web-01 · Ubuntu 24.04</h6>
+            <div class="msg me">why won't nginx restart?</div>
+            <div class="tool"><b>✓</b> run: docker ps --format '{{.Names}}'</div>
+            <div class="tool"><b>✓</b> read: ~/app/compose.yml</div>
+            <div class="msg">nginx runs in Docker here, not as a system service. Restart it with <code>docker compose restart nginx</code>. I can also clear its cache first:</div>
+            <div class="ask"><code>rm -rf /var/cache/nginx/*</code><div><span class="go">Allow once</span><span>Deny</span></div></div>
+          </div>
+        </div>
+        <div class="status"><span>● web-01</span><span>CPU 12%</span><span>Mem 1.4 / 4 GB</span><span>nginx · php 8.3 · node 22 · docker 27</span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+<section id="features">
+  <div class="wrap">
+    <div class="eyebrow">Everything in one window</div>
+    <h2>Terminal, SSH client, file manager and editor</h2>
+    <p class="sub">A MobaXterm-style workspace with a modern terminal inside. No juggling PuTTY, WinSCP and a text editor.</p>
+    <div class="grid">
+      <div class="card"><div class="ico">▤</div><h3>Command blocks</h3><p>Every command gets a green or red bar with its exit code. Click to copy output, fold it, re-run it or jump between commands with <kbd>Ctrl+Shift+↑↓</kbd>.</p></div>
+      <div class="card"><div class="ico">◫</div><h3>Tabs &amp; split panes</h3><p>Up to four panes per tab, nested freely. Broadcast typing sends one command to every pane or every open terminal.</p></div>
+      <div class="card"><div class="ico">⇄</div><h3>SSH sessions</h3><p>Saved sessions in folders with colours, icons and tags. Jump hosts, port forwards, Azure Bastion, RDP and VNC. Import from <code>~/.ssh/config</code>, MobaXterm and PuTTY.</p></div>
+      <div class="card"><div class="ico">🗂</div><h3>SFTP panel</h3><p>Browse next to every SSH tab, drag and drop files and folders, rename, delete. Works through jump hosts too.</p></div>
+      <div class="card"><div class="ico">✎</div><h3>Built-in editor</h3><p>Open remote files with syntax highlighting, tabs and find &amp; replace. <kbd>Ctrl+S</kbd> saves straight back and never overwrites a file that changed on the server without asking.</p></div>
+      <div class="card"><div class="ico">▣</div><h3>Server monitor</h3><p>CPU per core, load, memory, disks, network and top processes for your PC or the server. A Services column detects nginx, PHP, Node, MySQL, Redis, Docker and more.</p></div>
+      <div class="card"><div class="ico">⇥</div><h3>Autocomplete</h3><p>Flags and subcommands for common tools, file names on the server over SFTP, history, plus grey inline suggestions from history and AI.</p></div>
+      <div class="card"><div class="ico">⌘</div><h3>Snippets &amp; workflows</h3><p>Save commands with <code>{{name:default}}</code> placeholders. Workflows run line by line and stop at the first failure.</p></div>
+      <div class="card"><div class="ico">🎨</div><h3>Yours to tune</h3><p>Eight colour schemes, fonts and cursor styles. Tabs, splits and SSH sessions reopen when you start Moxie.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="ai">
+  <div class="wrap split">
+    <div>
+      <div class="eyebrow">AI agent</div>
+      <h2>An assistant that does the work, not just the talking</h2>
+      <p class="sub">Moxie tells the assistant which OS, shell, user, host and folder you're in. It runs commands, reads files and lists folders on the server, then keeps going until the task is done.</p>
+      <ul class="ticks">
+        <li><span><b>Explain &amp; fix.</b> A failed command gets a chip that sends exactly that command and its output to the AI.</span></li>
+        <li><span><b>Ask bar.</b> Press <kbd style="font-size:12px;border:1px solid var(--border);border-radius:5px;padding:1px 6px;background:var(--panel-2)">Ctrl+K</kbd> and describe what you want in plain language.</span></li>
+        <li><span><b>One chat per server.</b> Each SSH session keeps its own searchable history.</span></li>
+        <li><span><b>Summarize &amp; search logs.</b> Get a handoff summary of a session, or describe what to look for and it searches logs read-only.</span></li>
+      </ul>
+      <div class="safe"><span style="font-size:22px">⚠</span><span><b>Deletes always ask.</b> <code>rm</code>, <code>docker rm</code>, <code>DELETE FROM</code>, <code>git push --force</code>, <code>DROP TABLE</code>, reboot and similar need your OK in every mode, including Auto-run.</span></div>
+    </div>
+    <div>
+      <div class="provs">
+        <div class="prov"><b>Claude API</b><span>Streaming and tool calling</span></div>
+        <div class="prov"><b>OpenAI API</b><span>Or any compatible server, such as Ollama</span></div>
+        <div class="prov"><b>Claude Code CLI</b><span>Uses your existing login, no API key</span></div>
+        <div class="prov"><b>Codex CLI</b><span>Uses your existing login</span></div>
+      </div>
+      <p class="sub" style="font-size:15px;margin-top:18px">Pick different providers for chat and autocomplete. API keys live in your operating system's credential store, not in Moxie's settings file.</p>
+    </div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <div class="eyebrow">Download</div>
+    <h2>Get Moxie <span id="ver-h2" class="grad-text">v0.3.3</span></h2>
+    <p class="sub">Moxie is an early release. Expect rough edges and please report them on GitHub.</p>
+    <div class="dl">
+      <div class="card" id="card-win">
+        <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7H3zM11.5 4.3 21 3v8.4h-9.5zM3 12.6h7.5v7L3 18.5zM11.5 12.6H21V21l-9.5-1.3z"/></svg>Windows <span class="tag">Auto-updates</span></h3>
+        <ul>
+          <li>Windows 10 or 11 (WebView2 is already included)</li>
+          <li>Not code-signed yet: on first run choose <b>More info → Run anyway</b></li>
+          <li>Moxie offers new versions itself with <b>Update now</b></li>
+        </ul>
+        <div class="row">
+          <a class="btn primary" id="dl-exe" href="https://github.com/VijinV/term/releases/download/v0.3.2/Moxie_0.3.2_x64-setup.exe">Installer (.exe)</a>
+          <a class="btn" id="dl-msi" href="https://github.com/VijinV/term/releases/download/v0.3.2/Moxie_0.3.2_x64_en-US.msi">MSI for IT</a>
+        </div>
+      </div>
+      <div class="card" id="card-mac">
+        <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-3 .9-3.800 2.300-1.600 2.800-.4 7 1.200 9.300.8 1.100 1.700 2.400 2.900 2.300 1.200 0 1.600-.7 3-.7s1.800.7 3 .7 2-1.100 2.800-2.200c.9-1.300 1.200-2.500 1.300-2.600-.1 0-2.500-1-2.500-3.900zM14.200 5.800c.6-.8 1.100-1.800 1-2.900-.9 0-2 .6-2.700 1.400-.6.700-1.100 1.800-1 2.800 1 .1 2-.5 2.700-1.300z"/></svg>macOS <span class="tag warn">New</span></h3>
+        <ul>
+          <li>Apple Silicon (M1 and later)</li>
+          <li>Not signed or notarized yet: right-click Moxie and choose <b>Open</b> the first time</li>
+          <li>No auto-update on macOS yet: download new versions here</li>
+        </ul>
+        <div class="row">
+          <a class="btn primary" id="dl-dmg" href="https://github.com/VijinV/term/releases/download/v0.3.3/Moxie_0.3.3_aarch64.dmg">Disk image (.dmg)</a>
+        </div>
+      </div>
+    </div>
+    <p class="fine" style="text-align:center;margin-top:22px">Older versions and release notes on <a href="https://github.com/VijinV/term/releases" style="color:var(--accent-2)" rel="noopener">GitHub Releases</a>. Build from source with Node 18+, Rust and <code>npm run tauri build</code>.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.png" alt="" width="24" height="24">Moxie</a>
+    <div class="links">
+      <a href="https://github.com/VijinV/term" rel="noopener">GitHub</a>
+      <a href="https://github.com/VijinV/term/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/VijinV/term/issues" rel="noopener">Report a bug</a>
+    </div>
+    <span>Built with Tauri, Rust and xterm.js</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var ua = navigator.userAgent, isMac = /Mac/.test(ua) && !/iPhone|iPad/.test(ua), isWin = /Windows/.test(ua);
+  var label = document.getElementById("cta-label"), fine = document.getElementById("cta-fine");
+  if (isMac) { label.textContent = "Download for macOS"; fine.textContent = "Apple Silicon · also available for Windows"; document.getElementById("cta-main").href = "#card-mac"; }
+  else if (isWin) { label.textContent = "Download for Windows"; fine.textContent = "Windows 10/11 · also available for macOS (Apple Silicon)"; document.getElementById("cta-main").href = "#card-win"; }
+  if (isMac) { var g = document.querySelector(".dl"); g.insertBefore(document.getElementById("card-mac"), document.getElementById("card-win")); }
+
+  // Point the buttons at the newest release that has each file; the hard-coded links above are the fallback.
+  fetch("https://api.github.com/repos/VijinV/term/releases")
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+    .then(function (rels) {
+      rels = rels.filter(function (r) { return !r.draft && !r.prerelease; });
+      function find(re) {
+        for (var i = 0; i < rels.length; i++) {
+          var a = (rels[i].assets || []).filter(function (x) { return re.test(x.name); })[0];
+          if (a) return { url: a.browser_download_url, tag: rels[i].tag_name };
+        }
+      }
+      var exe = find(/-setup\.exe$/), msi = find(/\.msi$/), dmg = find(/\.dmg$/);
+      if (exe) document.getElementById("dl-exe").href = exe.url;
+      if (msi) document.getElementById("dl-msi").href = msi.url;
+      if (dmg) document.getElementById("dl-dmg").href = dmg.url;
+      if (rels[0]) {
+        document.getElementById("ver-pill").textContent = rels[0].tag_name;
+        document.getElementById("ver-h2").textContent = rels[0].tag_name;
+      }
+    })
+    .catch(function () { document.getElementById("ver-h2").textContent = "v0.3.3"; });
+})();
+</script>
+</body>
+</html>

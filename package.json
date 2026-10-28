@@ -1,7 +1,8 @@
 {
   "name": "moxie",
   "private": true,
-  "version": "0.3.2",
+  "license": "MIT",
+  "version": "0.3.3",
   "type": "module",
   "scripts": {
     "dev": "vite",

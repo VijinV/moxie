@@ -2,11 +2,15 @@
 
 A MobaXterm-style terminal and SSH/SFTP client with Warp-style AI, built in Rust (Tauri 2) with an xterm.js front end.
 
-> **Status: prototype.** Built and tested on Windows 11. The code is cross-platform (Tauri), but macOS and Linux builds haven't been tried yet.
+**Website: [vijinv.github.io/term](https://vijinv.github.io/term/)**
+
+> **Status: prototype.** Built and tested mainly on Windows 11. A macOS (Apple Silicon) build is available but newer and less tested; Linux builds haven't been tried yet.
 
 ## Download
 
-Get the latest Windows build from **[Releases](https://github.com/VijinV/term/releases/latest)**:
+Get Moxie from **[Releases](https://github.com/VijinV/term/releases)**.
+
+### Windows
 
 | File | Use it when |
 | --- | --- |
@@ -15,6 +19,14 @@ Get the latest Windows build from **[Releases](https://github.com/VijinV/term/re
 
 From 0.2.0 on, Moxie updates itself: when a new version is out it offers **Update now** (and ⬆ in the status bar). The installers aren't code-signed yet, so Windows SmartScreen warns on first run; choose **More info → Run anyway**.
 Moxie needs the WebView2 runtime, which Windows 10/11 already include.
+
+### macOS (Apple Silicon)
+
+| File | Use it when |
+| --- | --- |
+| [`Moxie_0.3.3_aarch64.dmg`](https://github.com/VijinV/term/releases/download/v0.3.3/Moxie_0.3.3_aarch64.dmg) | Open it and drag Moxie to Applications |
+
+The app isn't signed or notarized yet, so the first time, right-click Moxie and choose **Open**. There's no auto-update on macOS yet: download new versions from Releases.
 
 ## Features
 
@@ -179,3 +191,7 @@ src/
 - Folding output hides it behind a bar but can't remove the rows (xterm.js limitation).
 - RDP and VNC open external apps; they aren't embedded in a Moxie tab. No X11 forwarding or serial yet.
 - Code signing needs a certificate or an Azure Trusted Signing account (see Releasing).
+
+## License
+
+Moxie is open source under the [MIT License](LICENSE).

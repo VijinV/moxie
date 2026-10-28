@@ -43,22 +43,6 @@ fn finish_connect(
     }
 }
 
-/// "user@host:port", "host:port" or "host" (only the first hop of a comma-separated chain).
-fn parse_jump(spec: &str) -> Result<(Option<String>, String, u16), String> {
-    let first = spec.trim();
-    if first.contains(',') {
-        return Err("SFTP supports a single jump host (the terminal supports chains)".into());
-    }
-    let (user, rest) = match first.rsplit_once('@') {
-        Some((u, r)) => (Some(u.to_string()), r),
-        None => (None, first),
-    };
-    let (host, port) = match rest.rsplit_once(':') {
-        Some((h, p)) if !h.contains(':') => (h.to_string(), p.parse().map_err(|_| format!("bad jump host port in {spec}"))?),
-        _ => (rest.to_string(), 22),
-    };
-    Ok((user, host, port))
-}
 
 #[derive(Default)]
 pub struct SftpState {
@@ -86,6 +70,9 @@ pub async fn sftp_connect(
     trust: Option<String>,
     known_host_alias: Option<String>,
     jump: Option<String>,
+    jump_key_path: Option<String>,
+    jump_secret_key: Option<String>,
+    jump_trust: Option<String>,
 ) -> Result<String, String> {
     let issue = Arc::new(Mutex::new(HostKeyIssue::None));
     // Tunneled connections (Azure Bastion) land on 127.0.0.1:<random port>; check the host key
@@ -101,27 +88,27 @@ pub async fn sftp_connect(
     });
     let user = if user.trim().is_empty() { std::env::var("USERNAME").unwrap_or_else(|_| "root".into()) } else { user };
     let password = secret_key.as_deref().and_then(crate::secrets::get);
+    let jump_key = jump_key_path.as_deref().filter(|k| !k.is_empty());
+    let jump_password = jump_secret_key.as_deref().and_then(crate::secrets::get);
 
     // Through a jump host (ProxyJump): log in there, then tunnel the real connection through it.
     let mut jump_handle = None;
     let mut handle = if let Some(spec) = jump.filter(|j| !j.trim().is_empty()) {
-        let (juser, jhost, jport) = parse_jump(&spec)?;
-        let jissue = Arc::new(Mutex::new(HostKeyIssue::None));
-        let jhandler = Client { host: jhost.clone(), port: jport, trust: trust.clone(), issue: jissue.clone() };
-        let connect = client::connect(config.clone(), (jhost.as_str(), jport), jhandler);
-        let mut jh = finish_connect(tokio::time::timeout(Duration::from_secs(20), connect).await, &jissue, &format!("jump host {jhost}"))?;
-        let ok = authenticate(&mut jh, juser.as_deref().unwrap_or(&user), &key_path, password.as_deref())
-            .await
-            .map_err(|e| format!("jump host authentication error: {e}"))?;
-        if !ok {
-            return Err(if password.is_some() { "AUTH_FAILED".into() } else { "AUTH_NEED_PASSWORD".into() });
-        }
-        let channel = jh
-            .channel_open_direct_tcpip(host.clone(), port as u32, "127.0.0.1", 0)
-            .await
-            .map_err(|e| format!("jump host {jhost} couldn't reach {host}:{port}: {e}"))?;
-        let connect = client::connect_stream(config, channel.into_stream(), handler);
-        let h = finish_connect(tokio::time::timeout(Duration::from_secs(20), connect).await, &issue, &format!("{host}:{port}"))?;
+        let (h, jh) = crate::ssh_conn::connect_via_jump(
+            &spec,
+            &host,
+            port,
+            &kh_host,
+            kh_port,
+            trust.clone(),
+            &user,
+            &key_path,
+            password.as_deref(),
+            jump_key,
+            jump_password.as_deref(),
+            jump_trust,
+        )
+        .await?;
         jump_handle = Some(jh);
         h
     } else {

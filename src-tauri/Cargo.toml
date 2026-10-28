@@ -1,7 +1,9 @@
 [package]
 name = "moxie"
-version = "0.3.2"
+version = "0.3.3"
 description = "AI-native terminal & SSH client (MobaXterm alternative) — prototype"
+license = "MIT"
+repository = "https://github.com/VijinV/term"
 edition = "2021"
 
 [build-dependencies]

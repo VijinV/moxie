@@ -318,6 +318,7 @@ function sessionItem(s) {
     sessions = sessions.filter((x) => x.id !== s.id);
     await invoke("save_sessions", { sessions });
     invoke("secret_delete", { key: secretKeyFor(s) });
+    invoke("secret_delete", { key: jumpSecretKeyFor(s) });
     renderSessions();
   });
   li.appendChild(actions);
@@ -520,7 +521,7 @@ function sshSpec(s, { host, port, hostKeyAlias = null, tunnelKey = null, tunnels
     forwards: fwd.labels,
     // Silently add shell integration on the server's bash/zsh prompt (unless turned off).
     integration: tunnelsOnly || s.integrate === false ? "none" : "inject",
-    ssh: { host, port, user: s.user, key: s.key, jump: s.jump || null, secretKey, hostKeyAlias, label: hostKeyAlias ?? host },
+    ssh: { host, port, user: s.user, key: s.key, jump: s.jump || null, jumpKey: s.jump_key || null, jumpSecretKey: s.jump ? jumpSecretKeyFor(s) : null, secretKey, hostKeyAlias, label: hostKeyAlias ?? host },
   };
 }
 
@@ -635,6 +636,7 @@ function shellSpec(s) {
 }
 
 const secretKeyFor = (s) => `ssh:${s.id}`;
+const jumpSecretKeyFor = (s) => `ssh:jump:${s.id}`;
 const vmName = (id = "") => id.replace(/\/+$/, "").split("/").pop() || "vm";
 const sessionTitle = (s) => s.name || (s.type === "bastion" ? vmName(s.vm) : s.host);
 
@@ -710,7 +712,7 @@ function openSshDialog(session = null) {
   const form = $("ssh-form");
   form.reset();
   const s = session ?? { port: 22 };
-  for (const k of ["id", "name", "host", "port", "user", "key", "extra", "bastion", "rg", "vm", "sub", "forwards", "folder", "jump"]) form.elements[k].value = s[k] ?? "";
+  for (const k of ["id", "name", "host", "port", "user", "key", "extra", "bastion", "rg", "vm", "sub", "forwards", "folder", "jump", "jump_key"]) form.elements[k].value = s[k] ?? "";
   form.elements.integrate.checked = s.integrate !== false;
   form.elements.type.value = s.type ?? "ssh";
   form.elements.type.dataset.prev = form.elements.type.value;
@@ -718,10 +720,22 @@ function openSshDialog(session = null) {
   if (!s.port) form.elements.port.value = 22;
   validateSshForm();
   form.elements.password.placeholder = "optional";
+  form.elements.jump_password.placeholder = "optional";
+  const toggleJumpCreds = () => {
+    const show = !!form.elements.jump.value.trim();
+    document.getElementById("jump-creds-section")?.classList.toggle("hidden", !show);
+  };
+  toggleJumpCreds();
+  form.elements.jump.addEventListener("input", toggleJumpCreds);
   if (session) {
     invoke("secret_exists", { key: secretKeyFor(session) }).then((saved) => {
       if (saved) form.elements.password.placeholder = "•••••••• saved — leave blank to keep";
     });
+    if (session.jump) {
+      invoke("secret_exists", { key: jumpSecretKeyFor(session) }).then((saved) => {
+        if (saved) form.elements.jump_password.placeholder = "•••••••• saved — leave blank to keep";
+      });
+    }
   }
   dlg.showModal();
 }
@@ -740,6 +754,7 @@ $("ssh-dialog").addEventListener("close", async () => {
     port: Number(f.port.value) || DEFAULT_PORT[type],
     folder: f.folder.value.trim(),
     jump: type === "ssh" ? f.jump.value.trim() : "",
+    jump_key: type === "ssh" ? f.jump_key.value.trim() : "",
     user: f.user.value.trim(),
     key: f.key.value.trim(),
     extra: f.extra.value.trim(),
@@ -768,6 +783,14 @@ $("ssh-dialog").addEventListener("close", async () => {
     else if (!f.remember.checked) await invoke("secret_delete", { key: secretKeyFor(s) });
   } catch (err) {
     setStatus(String(err));
+  }
+  const jumpPassword = f.jump_password.value;
+  f.jump_password.value = "";
+  if (s.jump) {
+    try {
+      if (jumpPassword) await invoke("secret_set", { key: jumpSecretKeyFor(s), value: jumpPassword, persist: f.jump_remember.checked });
+      else if (!f.jump_remember.checked) await invoke("secret_delete", { key: jumpSecretKeyFor(s) });
+    } catch {}
   }
   renderSessions();
   if (dlg.returnValue === "connect") connectSession(s);
