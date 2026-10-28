@@ -1010,7 +1010,7 @@ function confirmRun(cmd, tab, dangerous) {
   box.className = "agent-confirm";
   box.innerHTML = `<div class="muted small">Run in <b></b>?</div><code></code>
     ${dangerous ? '<div class="warn">⚠ This deletes or destroys something, so it always needs your OK, in every mode.</div>' : ""}
-    <div class="btns"><button class="ghost-btn" data-v="0">Skip</button><button class="primary-btn" data-v="1">Run ▶</button></div>`;
+    <div class="btns"><button class="ghost-btn" data-v="0">Deny</button><button class="primary-btn" data-v="1">Allow once</button></div>`;
   box.querySelector("b").textContent = tab.spec.title;
   box.querySelector("code").textContent = cmd;
   log.appendChild(box);
