@@ -179,3 +179,7 @@ src/
 - Folding output hides it behind a bar but can't remove the rows (xterm.js limitation).
 - RDP and VNC open external apps; they aren't embedded in a Moxie tab. No X11 forwarding or serial yet.
 - Code signing needs a certificate or an Azure Trusted Signing account (see Releasing).
+
+## License
+
+Moxie is open source under the [MIT License](LICENSE).
